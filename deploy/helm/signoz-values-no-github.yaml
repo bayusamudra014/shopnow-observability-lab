@@ -1,0 +1,19 @@
+# Extra SigNoz values for the student kit (added after signoz-values.yaml).
+# By default ClickHouse's "udf" init container downloads the histogramQuantile binary from
+# GitHub at every start. Student VMs cannot reach GitHub, so copy it from the course image
+# shopnow-clickhouse-udf (built and pushed by scripts/release.ps1) instead.
+clickhouse:
+  initContainers:
+    udf:
+      image:
+        registry: __REGISTRY__
+        repository: shopnow-clickhouse-udf
+        tag: __TAG__
+        pullPolicy: IfNotPresent
+      command:
+        - sh
+        - -c
+        - |
+          set -e
+          cp /histogram-quantile /var/lib/clickhouse/user_scripts/histogramQuantile
+          echo "histogram-quantile installed from the course image (no GitHub download)"

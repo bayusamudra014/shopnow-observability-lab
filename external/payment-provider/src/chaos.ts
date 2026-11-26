@@ -48,3 +48,41 @@ export const defaults = (): Chaos => ({
 export const chaos: Chaos = defaults();
 
 export const roll = (rate: number) => Math.random() < rate;
+
+/**
+ * Optional recurring incident, for a provider nobody is watching (a student's own MockPay):
+ *   CHAOS_SCHEDULE=slow-waves   every CHAOS_WAVE_PERIOD_SECONDS (default 1800) the provider is
+ *                               slow for the last CHAOS_WAVE_SECONDS of the period (default 600)
+ * During a wave latency/timeout settings are overridden; afterwards the previous values return.
+ */
+const SLOW_WAVE: Partial<Chaos> = {
+  latencyMs: envNumber("CHAOS_WAVE_LATENCY_MS", 2500),
+  latencyJitterMs: envNumber("CHAOS_WAVE_LATENCY_JITTER_MS", 1500),
+  timeoutRate: envNumber("CHAOS_WAVE_TIMEOUT_RATE", 0.05),
+};
+export const schedule = {
+  name: (process.env.CHAOS_SCHEDULE ?? "").trim(),
+  periodSeconds: envNumber("CHAOS_WAVE_PERIOD_SECONDS", 1800),
+  waveSeconds: envNumber("CHAOS_WAVE_SECONDS", 600),
+  inWave: false,
+  startedAt: Date.now(),
+};
+
+export function startSchedule(onChange: (inWave: boolean) => void) {
+  if (schedule.name !== "slow-waves") return;
+  let saved: Partial<Chaos> = {};
+  const tick = () => {
+    const t = ((Date.now() - schedule.startedAt) / 1000) % schedule.periodSeconds;
+    const inWave = t >= schedule.periodSeconds - schedule.waveSeconds;
+    if (inWave === schedule.inWave) return;
+    schedule.inWave = inWave;
+    if (inWave) {
+      saved = Object.fromEntries(Object.keys(SLOW_WAVE).map((k) => [k, chaos[k as keyof Chaos]]));
+      Object.assign(chaos, SLOW_WAVE);
+    } else {
+      Object.assign(chaos, saved);
+    }
+    onChange(inWave);
+  };
+  setInterval(tick, 5000).unref();
+}

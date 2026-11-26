@@ -1,0 +1,61 @@
+# The shop as students inherit it for the incident challenges: the student-kit shop
+# (../vm) with production problems built in. Rendered by scripts/release.ps1 into the kit's
+# shopnow.yaml; render with -Clean for a kit without them.
+#
+# INSTRUCTOR ONLY: this file is the answer key. It is never shipped; the kit only contains
+# the rendered result, where these values look like ordinary configuration.
+#
+#   1  catalog: N+1 rating queries, no index on product_reviews(product_id)   (in the base)
+#   2  (event) the payment provider gets slow: the drill / the local MockPay's slow waves
+#   3  shop-public ingress: /webhooks points at a port the payment Service does not have
+#   4  api-gateway: CPU limit 150m, one replica, no autoscaler
+#   5  notification: memory limit below what it needs to start (OOMKilled, crash loop)
+#   6  notification: slow mail relay (2 s per email), order.* topics with 1 partition
+#   7  (event) credential stuffing: the generator's credential-stuffing drill
+#   8  order: "last night's release" KIT_BAD_TAG (the deploy script rolls it out)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../vm
+  - lab-check.yaml
+
+patches:
+  # 3: a typo in the webhook route's port.
+  - target: { kind: Ingress, name: shop-public, namespace: shop }
+    patch: |-
+      - op: test
+        path: /spec/rules/0/http/paths/1/path
+        value: /webhooks
+      - op: replace
+        path: /spec/rules/0/http/paths/1/backend/service/port/number
+        value: 8080
+  # 4: "someone copied the limits from the dev cluster".
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: { name: api-gateway, namespace: shop }
+      spec:
+        template:
+          spec:
+            containers:
+              - name: api-gateway
+                resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { cpu: 150m, memory: 384Mi } }
+  # 5 + 6
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: { name: notification, namespace: shop }
+      spec:
+        template:
+          spec:
+            containers:
+              - name: notification
+                env:
+                  - { name: NOTIFICATION_DELAY_MS, value: "2000" }
+                resources: { requests: { cpu: 50m, memory: 32Mi }, limits: { memory: 40Mi } }
+  # 6: one partition each, so extra consumers sit idle.
+  - target: { kind: KafkaTopic, name: "order.(placed|confirmed|cancelled)$", namespace: infra }
+    patch: |-
+      - op: replace
+        path: /spec/partitions
+        value: 1

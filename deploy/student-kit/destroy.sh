@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# Deletes the minikube cluster and everything in it (shop data, SigNoz data).
-# The generated database passwords in .secrets.env are kept for the next deploy.
+# Deletes ShopNow from this machine: the local MockPay (MODE=local) and the minikube cluster,
+# with all their data. The generated passwords in .secrets.env are kept for the next deploy.
 set -euo pipefail
-read -r -p "Delete the minikube cluster and ALL ShopNow data on this VM? [y/N] " ok
+KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROFILE="${MINIKUBE_PROFILE:-shopnow}"
+read -r -p "Delete the '$PROFILE' minikube cluster and ALL ShopNow data on this machine? [y/N] " ok
 [[ "$ok" == [yY]* ]] || { echo "cancelled"; exit 0; }
-minikube delete
+if [[ -f "$KIT_DIR/.mockpay.env" ]]; then
+  docker compose -f "$KIT_DIR/local/mockpay-compose.yml" --env-file "$KIT_DIR/.mockpay.env" down -v || true
+fi
+minikube -p "$PROFILE" delete

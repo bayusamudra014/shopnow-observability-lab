@@ -33,6 +33,17 @@ export const drills: Record<string, Drill> = {
   "lost-webhooks": { description: "half of the webhooks never arrive (the reconciler must fix them)", durationSeconds: 300, chaos: { dropWebhookRate: 0.5 } },
   "decline-wave": { description: "many cards declined, synchronously and via webhook", durationSeconds: 300, chaos: { declineRate: 0.4, asyncDeclineRate: 0.2 } },
   "webhook-forgery": { description: "webhooks arrive with invalid signatures", durationSeconds: 300, chaos: { badSignatureRate: 0.5 } },
+  // Course challenges: long-running versions that stay on while students investigate.
+  "payment-slowdown": {
+    description: "challenge 2: the provider answers in 2.5-4 s and sometimes hangs, for an hour (checkouts time out, retry and trip the breaker)",
+    durationSeconds: 3600,
+    chaos: { latencyMs: 2500, latencyJitterMs: 1500, timeoutRate: 0.05 },
+  },
+  "credential-stuffing": {
+    description: "challenge 7: a credential-stuffing botnet against every target's login, for an hour",
+    durationSeconds: 3600,
+    profile: "credential-stuffing",
+  },
   "login-storm": { description: "ramp traffic (all targets) where every journey logs in again (bcrypt CPU)", durationSeconds: 300, profile: "ramp", freshLoginRate: 1 },
   "midnight-meltdown": {
     description: "midnight-sale profile while the provider is slow and drops webhooks",

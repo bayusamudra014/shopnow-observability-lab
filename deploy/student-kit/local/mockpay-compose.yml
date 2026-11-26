@@ -1,0 +1,70 @@
+# MODE=local: the payment provider (MockPay) runs on this computer, outside the cluster, on
+# minikube's Docker network, like a third-party service. Started by the deploy script with
+# a generated env file (.mockpay.env); not meant to be run by hand.
+name: shopnow-mockpay
+
+services:
+  provider-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: provider
+      POSTGRES_USER: provider
+      POSTGRES_PASSWORD: ${PROVIDER_DB_PASSWORD:?}
+    volumes:
+      - provider-db:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U provider -d provider"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  payment-provider:
+    image: ${REGISTRY:?}/shopnow-payment-provider:${TAG:?}
+    depends_on:
+      provider-db:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      OTEL_SERVICE_NAME: payment-provider
+      LOG_LEVEL: info
+      DATABASE_URL: postgres://provider:${PROVIDER_DB_PASSWORD}@provider-db:5432/provider
+      PROVIDER_API_KEY: ${PROVIDER_API_KEY:?}
+      PROVIDER_WEBHOOK_SECRET: ${PROVIDER_WEBHOOK_SECRET:?}
+      PROVIDER_ADMIN_TOKEN: ${PROVIDER_ADMIN_TOKEN:?}
+      # The shop sends its webhook URL with every charge (http://<SHOP_HOST>/webhooks/...).
+      WEBHOOK_URL: ""
+      WEBHOOK_ALLOWED_HOSTS: ""
+      CHAOS_LATENCY_MS: "80"
+      CHAOS_LATENCY_JITTER_MS: "120"
+      CHAOS_DECLINE_RATE: "0.03"
+      CHAOS_ASYNC_DECLINE_RATE: "0.02"
+      CHAOS_WEBHOOK_DELAY_MS: "2000"
+      CHAOS_DUPLICATE_WEBHOOK_RATE: "0.02"
+      # Challenge kit: the provider has bad spells now and then (empty: never).
+      CHAOS_SCHEDULE: ${CHAOS_SCHEDULE:-}
+    # Webhooks go to the shop's hostname through the cluster's ingress on the minikube node.
+    extra_hosts:
+      - "${SHOP_HOST:?}:${MINIKUBE_IP:?}"
+    ports:
+      - "127.0.0.1:${MOCKPAY_PORT:-8090}:8080"   # chaos console: http://localhost:8090/admin
+    networks:
+      internal: {}
+      minikube:
+        ipv4_address: ${PROVIDER_IP:?}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  internal: {}
+  minikube:
+    external: true
+    name: ${MINIKUBE_NETWORK:?}
+
+volumes:
+  provider-db: {}

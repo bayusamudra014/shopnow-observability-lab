@@ -1,0 +1,13 @@
+{
+  "name": "@shop/lab-check",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Grades the ShopNow incident challenges from inside a student's cluster (read-only)",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@shop/telemetry": "*"
+  }
+}

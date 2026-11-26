@@ -51,7 +51,7 @@ each is shown once and stored only as a hash.
 
 ### Traffic profiles
 `steady`, `diurnal`, `ramp`, `flash-sale`, `black-friday`, `cyber-monday`, `midnight-sale`,
-`lunch-rush`, `payday`, `weekend`, `bot-attack`. Switch them in the generator's **Settings** tab
+`lunch-rush`, `payday`, `weekend`, `bot-attack`, `credential-stuffing`. Switch them in the generator's **Settings** tab
 (each card previews its curve). Several profiles bring their own persona mix and hot products;
 drills (e.g. `black-friday`, `midnight-meltdown`) combine a profile with provider chaos.
 
@@ -74,15 +74,47 @@ docker login <registry host>
 
 | Kit | Runs on | You fill in |
 |---|---|---|
-| `shopnow-kit-<tag>.tar.gz` | each student VM (Ubuntu + minikube) | `shopnow.env`: `SHOP_HOST`, `MAIL_HOST`, `SIGNOZ_HOST`, `SHOP_PUBLIC_URL`, `PROVIDER_URL`, `WEBHOOK_CALLBACK_URL` |
+| `shopnow-kit-<tag>.tar.gz` | Linux: a student's Ubuntu desktop (`MODE=local`) or a VM (`MODE=vm`) | `shopnow.env`: `MODE`; for `vm` also `SHOP_HOST`, `MAIL_HOST`, `SIGNOZ_HOST`, `SHOP_PUBLIC_URL`, `PROVIDER_URL`, `WEBHOOK_CALLBACK_URL` |
+| `shopnow-kit-windows-<tag>.zip` | a student's Windows computer with Docker Desktop (`MODE=local`) | nothing: double-click `deploy.cmd` |
 | `shopnow-instructor-<tag>.tar.gz` | the instructor host (MockPay + traffic generator) | `.env`: `WEBHOOK_ALLOWED_HOSTS`, `TARGET_BASE_URLS` (optional `WEBHOOK_URL`, ports) |
+
+To re-render the student kit on Windows without building or pushing (for a tag that is already
+in the registry), optionally one ready-to-run kit per VM:
+
+```powershell
+.\scripts\render-student-kit.ps1 -Registry <registry host>/<project> -Tag 1.0.0
+.\scripts\render-student-kit.ps1 -Registry <registry host>/<project> -Tag 1.0.0 -VmEnvFile .\vms\node1.env, .\vms\node2.env
+```
+
+Each VM env file (template: `deploy/student-kit/vm.env.example`) holds that VM's hosts and URLs;
+the result is `dist\shopnow-kit-<name>-<tag>.tar.gz` with `shopnow.env` already filled in.
 
 No hosts or URLs are baked in. The registry, tag and shared secrets (`.secrets/shopnow.env`:
 MockPay API key, webhook secret, admin token, seed-user password, generator token) are prefilled.
 Then `./deploy.sh --install-deps` on each VM and `./deploy.sh` on the instructor host.
 
+Two modes: `MODE=local` runs everything on the student's computer, including its own MockPay,
+at `http://shop.localhost` (browsers resolve `*.localhost`, so no DNS or hosts file); `MODE=vm`
+is a server reached by DNS that uses the shared MockPay and your traffic generator. The kit
+uses its own minikube profile (`shopnow`).
+
+Student machines need no GitHub access: the kit bundles minikube/kubectl/helm (`tools/`), the
+pinned Helm charts (`charts/`), and SigNoz's ClickHouse UDF comes from the
+`shopnow-clickhouse-udf` image instead of a GitHub download.
+
 One MockPay serves every shop: each charge carries the shop's `webhookUrl`, and MockPay only
 accepts hosts matching `WEBHOOK_ALLOWED_HOSTS`.
+
+### Incident challenges
+
+The student kit is a **challenge kit** by default: its shop has eight production incidents
+built in (rendered from `deploy/overlays/lab`), students get `TICKETS.md` and grade
+themselves with `check.sh` / `check.cmd` (the `shopnow-lab-check` image, a read-only Job in
+their cluster). Two incidents are events you start: the generator drills `payment-slowdown`
+and `credential-stuffing` (on student computers, the local MockPay has slow waves instead).
+Ticket 8's "last night's release" is `-BadTag` (default: the next patch version), pushed for
+order and catalog only. The answer key is [docs/challenges.md](docs/challenges.md);
+`-Clean` (release or render script) renders a kit without any of it.
 
 ## Checkout flow
 
@@ -94,5 +126,8 @@ accepts hosts matching `WEBHOOK_ALLOWED_HOSTS`.
 
 The webhook starts a **new trace**; `payment` adds a span link back to the checkout trace.
 Generated traffic is deliberately **not labelled**: no journey or synthetic headers and ordinary
-browser user-agents, so in SigNoz it looks like real customers. Only the generator's own
+browser user-agents, so in SigNoz it looks like real customers. Each journey also sends a
+simulated client address in `X-Forwarded-For`, as a load balancer would (customers from many
+addresses, the credential-stuffing botnet from a few); the shop sees them only if its ingress
+trusts that header. Only the generator's own
 dashboard knows which persona sent what.

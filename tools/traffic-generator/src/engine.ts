@@ -6,7 +6,7 @@
 import { logger, env, envNumber, envBool } from "@shop/telemetry";
 import { journeyNames, runJourney, JourneyError, thinkTime } from "./journeys.js";
 import type { JourneyName } from "./journeys.js";
-import { journeyScope, randomUserAgent, targets } from "./targets.js";
+import { journeyScope, randomBotIp, randomBotUserAgent, randomCustomerIp, randomUserAgent, targets } from "./targets.js";
 import type { Target } from "./targets.js";
 
 export const profileNames = [
@@ -21,6 +21,7 @@ export const profileNames = [
   "payday",
   "weekend",
   "bot-attack",
+  "credential-stuffing",
 ] as const;
 export type ProfileName = (typeof profileNames)[number];
 
@@ -114,6 +115,12 @@ export const profiles: Record<ProfileName, Profile> = {
     multiplier: () => 2,
     weights: { window_shopper: 15, cart_abandoner: 10, buyer: 4, returning_customer: 1, misbehaving_client: 70 },
     freshLoginRate: 1,
+  },
+  "credential-stuffing": {
+    title: "Credential stuffing",
+    description: "Normal shoppers (1.5x) plus a botnet of a few addresses replaying leaked username/password lists against the login endpoint. Every attempt costs auth a bcrypt hash, so logins get slow for everyone.",
+    multiplier: () => 1.5,
+    weights: { window_shopper: 35, cart_abandoner: 15, buyer: 12, returning_customer: 3, misbehaving_client: 1, credential_stuffer: 34 },
   },
 };
 
@@ -211,7 +218,9 @@ async function launch(target: Target, name: JourneyName) {
   const started = Date.now();
   let outcome = "failed";
   try {
-    outcome = await journeyScope.run({ journey: name, userAgent: randomUserAgent() }, () =>
+    const bot = name === "credential_stuffer";
+    const scope = { journey: name, userAgent: bot ? randomBotUserAgent() : randomUserAgent(), clientIp: bot ? randomBotIp() : randomCustomerIp() };
+    outcome = await journeyScope.run(scope, () =>
       runJourney(name, { target, hotProducts: profiles[settings.profile].hotProducts ?? [], freshLoginRate: effectiveFreshLoginRate() }),
     );
   } catch (err) {

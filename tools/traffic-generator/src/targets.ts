@@ -36,7 +36,18 @@ export const TargetSchema = z.object({
 export type TargetConfig = z.infer<typeof TargetSchema>;
 
 /** The journey currently running (set by the engine), used for stats and request headers. */
-export const journeyScope = new AsyncLocalStorage<{ journey: string; userAgent: string }>();
+export const journeyScope = new AsyncLocalStorage<{ journey: string; userAgent: string; clientIp: string }>();
+
+/**
+ * Simulated client addresses, sent as X-Forwarded-For like a CDN or load balancer in front
+ * of the shop would. Customers come from many consumer-ISP addresses; a botnet from a few.
+ * The shop only sees them if its ingress is configured to trust X-Forwarded-For.
+ */
+const CUSTOMER_PREFIXES = ["36.68", "36.72", "103.47", "110.136", "114.124", "125.160", "180.244", "182.1", "202.67", "223.255"];
+const BOTNET = ["45.155.205.233", "45.155.205.241", "185.220.101.47", "185.220.101.52", "194.26.29.113", "91.240.118.172"];
+const octet = () => 1 + Math.floor(Math.random() * 254);
+export const randomCustomerIp = () => `${CUSTOMER_PREFIXES[Math.floor(Math.random() * CUSTOMER_PREFIXES.length)]}.${octet()}.${octet()}`;
+export const randomBotIp = () => BOTNET[Math.floor(Math.random() * BOTNET.length)];
 
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36",
@@ -48,6 +59,9 @@ const USER_AGENTS = [
 ];
 /** A browser user-agent; one per journey, like one visitor using one device. */
 export const randomUserAgent = () => USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+/** Credential-stuffing tools mostly pretend to be a browser; some do not bother. */
+const BOT_AGENTS = [...USER_AGENTS, "python-requests/2.32.4", "okhttp/4.12.0", "Go-http-client/1.1"];
+export const randomBotUserAgent = () => BOT_AGENTS[Math.floor(Math.random() * BOT_AGENTS.length)];
 
 export interface ApiResult<T = any> {
   status: number;
@@ -72,6 +86,7 @@ export class ApiClient {
     const scope = journeyScope.getStore();
     const journey = scope?.journey;
     const h: Record<string, string> = { accept: "application/json", "user-agent": scope?.userAgent ?? randomUserAgent(), ...headers };
+    if (scope?.clientIp) h["x-forwarded-for"] = scope.clientIp;
     if (this.token) h.authorization = `Bearer ${this.token}`;
     if (body !== undefined) h["content-type"] = "application/json";
     const started = Date.now();

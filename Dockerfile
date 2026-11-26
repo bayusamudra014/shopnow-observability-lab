@@ -19,8 +19,12 @@ COPY --from=build --chown=node:node /repo /app
 ARG WORKSPACE
 # INSTRUMENT=false starts the app WITHOUT OpenTelemetry (used for the external provider).
 ARG INSTRUMENT=true
-ENV WORKSPACE=${WORKSPACE} INSTRUMENT=${INSTRUMENT}
-RUN test -f "/app/${WORKSPACE}/dist/main.js" && mkdir -p /data && chown node:node /data
+# APP_VERSION becomes the OpenTelemetry service.version (the release tag).
+ARG APP_VERSION=dev
+# Optional features compiled into this release, comma-separated (read from .release-features).
+ARG RELEASE_FEATURES=""
+ENV WORKSPACE=${WORKSPACE} INSTRUMENT=${INSTRUMENT} APP_VERSION=${APP_VERSION}
+RUN test -f "/app/${WORKSPACE}/dist/main.js" && mkdir -p /data && chown node:node /data  && printf '%s' "${RELEASE_FEATURES}" > "/app/${WORKSPACE}/.release-features"
 WORKDIR /app/${WORKSPACE}
 USER node
 EXPOSE 8080

@@ -14,6 +14,7 @@
  *
  *   GET  /admin                   chaos control page
  *   GET|PUT /admin/chaos, POST /admin/chaos/reset, GET /admin/stats   (Bearer admin token)
+ *   GET /admin/chaos/schedule     recurring incident (CHAOS_SCHEDULE=slow-waves), if any
  *   GET|POST /admin/tokens, DELETE /admin/tokens/:id                   generate / revoke admin tokens
  */
 import path from "node:path";
@@ -22,7 +23,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { createServer, createPool, migrate, start, logger, sleep, env, envNumber } from "@shop/telemetry";
-import { chaos, ChaosSchema, defaults, roll } from "./chaos.js";
+import { chaos, ChaosSchema, defaults, roll, schedule, startSchedule } from "./chaos.js";
 
 const PORT = envNumber("PORT", 8080);
 const API_KEY = env("PROVIDER_API_KEY");
@@ -318,6 +319,7 @@ app.register(async (admin) => {
 
   admin.get("/admin/chaos", async () => chaos);
   admin.get("/admin/chaos/defaults", async () => defaults());
+  admin.get("/admin/chaos/schedule", async () => schedule);
   admin.put("/admin/chaos", async (req) => {
     const patch = ChaosSchema.partial().parse(req.body);
     Object.assign(chaos, patch);
@@ -372,6 +374,10 @@ async function main() {
   for (const r of rows) scheduleSettlement(r.id, 3000 + Math.random() * 5000);
   if (rows.length) logger.info({ count: rows.length }, "re-scheduled pending charges after restart");
   logger.info({ chaos, webhookUrl: WEBHOOK_URL, webhookAllowedHosts: WEBHOOK_ALLOWED_HOSTS }, `payment provider configuration: default webhook ${WEBHOOK_URL}, allowed webhook hosts ${WEBHOOK_ALLOWED_HOSTS.join(", ") || "any"}`);
+  startSchedule((inWave) =>
+    logger.warn({ chaos, schedule }, inWave ? `chaos schedule ${schedule.name}: slow wave started (${schedule.waveSeconds} s)` : `chaos schedule ${schedule.name}: slow wave ended`),
+  );
+  if (schedule.name) logger.info({ schedule }, `chaos schedule ${schedule.name}: ${schedule.waveSeconds} s slow every ${schedule.periodSeconds} s`);
   await start(app, PORT, [() => pool.end()]);
 }
 

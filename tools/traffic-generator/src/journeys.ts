@@ -7,8 +7,8 @@ import { productIds } from "@shop/contracts";
 import { sleep } from "@shop/telemetry";
 import type { ApiClient, ApiResult, Target } from "./targets.js";
 
-export type JourneyName = "window_shopper" | "cart_abandoner" | "buyer" | "returning_customer" | "misbehaving_client";
-export const journeyNames: JourneyName[] = ["window_shopper", "cart_abandoner", "buyer", "returning_customer", "misbehaving_client"];
+export type JourneyName = "window_shopper" | "cart_abandoner" | "buyer" | "returning_customer" | "misbehaving_client" | "credential_stuffer";
+export const journeyNames: JourneyName[] = ["window_shopper", "cart_abandoner", "buyer", "returning_customer", "misbehaving_client", "credential_stuffer"];
 
 export interface JourneyContext {
   target: Target;
@@ -19,7 +19,7 @@ export interface JourneyContext {
 }
 
 /** Outcome reported for metrics. Anything not "failed" is a valid result. */
-export type Outcome = "completed" | "abandoned" | "order_confirmed" | "order_cancelled" | "order_pending" | "checkout_rejected" | "expected_error";
+export type Outcome = "completed" | "abandoned" | "order_confirmed" | "order_cancelled" | "order_pending" | "checkout_rejected" | "expected_error" | "blocked";
 
 export class JourneyError extends Error {
   readonly status?: number;
@@ -88,6 +88,10 @@ async function checkout(api: ApiClient): Promise<Outcome> {
   }
   return "order_pending";
 }
+
+/** A leaked "combo list": common usernames and passwords, mixed with this shop's real usernames. */
+const LEAKED_USERS = ["admin", "test", "john.doe", "jane", "michael", "sarah", "budi", "siti", "andi", "dewi", "user1", "demo"];
+const LEAKED_PASSWORDS = ["123456", "password", "qwerty123", "iloveyou", "admin123", "Password1!", "letmein", "welcome1", "dragon", "sayang123", "indonesia1", "000000"];
 
 const journeys: Record<JourneyName, (ctx: JourneyContext) => Promise<Outcome>> = {
   /** Anonymous browsing. */
@@ -171,6 +175,21 @@ const journeys: Record<JourneyName, (ctx: JourneyContext) => Promise<Outcome>> =
       case "unknown_order":
         await withUser(ctx, async (api) => expect(await api.get(`/orders/${randomUUID()}`), 404));
         break;
+    }
+    return "expected_error";
+  },
+
+  /** A bot replaying leaked credentials against the login endpoint, quickly. */
+  async credential_stuffer(ctx) {
+    const anon = ctx.target.anonymous;
+    const attempts = between(8, 20);
+    for (let i = 0; i < attempts; i++) {
+      const username = Math.random() < 0.6 ? ctx.target.randomUsername() : pick(LEAKED_USERS);
+      const res = await anon.post("/auth/oauth/token", { grant_type: "password", username, password: pick(LEAKED_PASSWORDS) });
+      // Blocked by a rate limit at the ingress or gateway: the bot gives up on this address.
+      if (res.status === 429 || res.status === 503) return "blocked";
+      expect(res, 400, 401);
+      await sleep(50 + Math.random() * 250);
     }
     return "expected_error";
   },

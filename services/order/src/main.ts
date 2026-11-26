@@ -13,6 +13,7 @@
  * A sweeper cancels orders whose payment never completes.
  */
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Topics } from "@shop/contracts";
@@ -28,6 +29,15 @@ const CART_URL = env("CART_URL", "http://cart:8080");
 const INVENTORY_URL = env("INVENTORY_URL", "http://inventory:8080");
 const PAYMENT_URL = env("PAYMENT_URL", "http://payment:8080");
 const PAYMENT_TIMEOUT_SECONDS = envNumber("ORDER_PAYMENT_TIMEOUT_SECONDS", 600);
+
+/** Features compiled into this release (see the Dockerfile's RELEASE_FEATURES). */
+const releaseFeatures = (() => {
+  try {
+    return new Set(readFileSync(path.join(__dirname, "../.release-features"), "utf8").split(",").map((f) => f.trim()).filter(Boolean));
+  } catch {
+    return new Set<string>();
+  }
+})();
 
 const pool = createPool();
 const tracer = trace.getTracer("order");
@@ -60,6 +70,24 @@ const toOrder = (r: OrderRow) => ({
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
+
+/**
+ * Bulk pricing: buying several units of a premium item (from $100) earns a volume discount.
+ * Tiers by quantity; lines below BULK_MIN_QUANTITY pay the normal price.
+ */
+const BULK_MIN_QUANTITY = 3;
+const BULK_MIN_UNIT_PRICE_CENTS = 10_000;
+const BULK_TIERS = [
+  { minQuantity: 5, percentOff: 5 },
+  { minQuantity: 10, percentOff: 10 },
+];
+function applyBulkPricing(items: OrderItem[]) {
+  for (const item of items) {
+    if (item.quantity < BULK_MIN_QUANTITY || item.unitPriceCents < BULK_MIN_UNIT_PRICE_CENTS) continue;
+    const tier = BULK_TIERS.filter((t) => item.quantity >= t.minQuantity).at(-1)!;
+    item.unitPriceCents = Math.round((item.unitPriceCents * (100 - tier.percentOff)) / 100);
+  }
+}
 
 const event = () => ({ eventId: randomUUID(), occurredAt: new Date().toISOString() });
 
@@ -118,6 +146,7 @@ app.post("/orders", async (req, reply) => {
     finish("cart_empty");
     throw new HttpError(400, "cart is empty", "cart_empty");
   }
+  if (releaseFeatures.has("bulk-pricing")) applyBulkPricing(items);
   const totalCents = items.reduce((n, i) => n + i.quantity * i.unitPriceCents, 0);
   const orderId = randomUUID();
   span?.setAttributes({ "order.id": orderId, "order.total_cents": totalCents, "order.items": items.length });

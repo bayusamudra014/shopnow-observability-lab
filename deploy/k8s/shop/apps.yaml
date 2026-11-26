@@ -31,6 +31,8 @@ spec:
             - { name: OTEL_SERVICE_NAME, value: api-gateway }
             - { name: OTEL_RESOURCE_ATTRIBUTES, value: "service.namespace=shop,deployment.environment=minikube,k8s.namespace.name=shop,k8s.deployment.name=api-gateway,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)" }
             - { name: RATE_LIMIT_PER_MINUTE, value: "600" }
+            # Behind the ingress: the client address is in X-Forwarded-For.
+            - { name: TRUST_PROXY, value: "true" }
           ports: [{ name: http, containerPort: 8080 }]
           startupProbe: { httpGet: { path: /health, port: http }, periodSeconds: 3, failureThreshold: 60 }
           readinessProbe: { httpGet: { path: /ready, port: http }, periodSeconds: 10 }

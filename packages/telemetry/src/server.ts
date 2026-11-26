@@ -66,6 +66,9 @@ export function createServer(opts: ServerOptions = {}): FastifyInstance {
     bodyLimit: opts.bodyLimit ?? 1024 * 1024,
     requestIdHeader: "x-request-id",
     genReqId: () => randomUUID(),
+    // TRUST_PROXY=true: take the client address from X-Forwarded-For (set by the ingress).
+    // Only the edge service (api-gateway) needs it.
+    trustProxy: process.env.TRUST_PROXY === "true",
   });
 
   app.addHook("onRequest", async (req, reply) => {
@@ -79,7 +82,10 @@ export function createServer(opts: ServerOptions = {}): FastifyInstance {
     }
     const user = currentUser(req);
     if (span && user) span.setAttribute("enduser.id", user.id);
-    if (span) span.setAttribute("request.id", req.id);
+    if (span) {
+      span.setAttribute("request.id", req.id);
+      span.setAttribute("client.address", req.ip);
+    }
   });
 
   // Remember why a request failed, so the request log line can say it.
@@ -113,6 +119,8 @@ export function createServer(opts: ServerOptions = {}): FastifyInstance {
       durationMs,
       userId: user?.id,
       userEmail: user?.email || undefined,
+      clientIp: req.ip,
+      userAgent: req.headers["user-agent"],
       reason: reason || undefined,
     };
     // e.g.  GET /orders/2310d616-… → 404 Not Found in 3 ms · order not found · shopper015
