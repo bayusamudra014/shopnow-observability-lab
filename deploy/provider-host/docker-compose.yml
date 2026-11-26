@@ -1,0 +1,91 @@
+# Instructor host: the shared MockPay payment provider and the traffic generator, both
+# from the course registry. Copied into the instructor kit by scripts/release.ps1; every
+# value comes from .env next to this file.
+#
+#   MockPay            port PROVIDER_PORT (80)     API, outgoing webhooks, /admin console
+#   Traffic generator  port GENERATOR_PORT (8091)  instructor console (CONTROL_TOKEN)
+name: shopnow-instructor
+
+services:
+  provider-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: provider
+      POSTGRES_USER: provider
+      POSTGRES_PASSWORD: ${PROVIDER_DB_PASSWORD:?set in .env}
+    volumes:
+      - provider-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U provider -d provider"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  payment-provider:
+    image: ${REGISTRY}/shopnow-payment-provider:${TAG}
+    depends_on:
+      provider-db:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      OTEL_SERVICE_NAME: payment-provider
+      LOG_LEVEL: info
+      DATABASE_URL: postgres://provider:${PROVIDER_DB_PASSWORD}@provider-db:5432/provider
+      PROVIDER_API_KEY: ${PROVIDER_API_KEY:?set in .env}
+      PROVIDER_WEBHOOK_SECRET: ${PROVIDER_WEBHOOK_SECRET:?set in .env}
+      PROVIDER_ADMIN_TOKEN: ${PROVIDER_ADMIN_TOKEN:-}
+      # Each shop sends its own webhook URL with the charge; only these host suffixes are
+      # accepted (empty = any). WEBHOOK_URL is the fallback for charges without one.
+      WEBHOOK_ALLOWED_HOSTS: ${WEBHOOK_ALLOWED_HOSTS:-}
+      WEBHOOK_URL: ${WEBHOOK_URL:-}
+      CHAOS_LATENCY_MS: "80"
+      CHAOS_LATENCY_JITTER_MS: "120"
+      CHAOS_DECLINE_RATE: "0.03"
+      CHAOS_ASYNC_DECLINE_RATE: "0.02"
+      CHAOS_WEBHOOK_DELAY_MS: "2000"
+      CHAOS_DUPLICATE_WEBHOOK_RATE: "0.02"
+    ports:
+      - "${PROVIDER_BIND:-0.0.0.0}:${PROVIDER_PORT:-80}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  traffic-generator:
+    image: ${REGISTRY}/shopnow-traffic-generator:${TAG}
+    depends_on:
+      payment-provider:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      OTEL_SERVICE_NAME: traffic-generator
+      LOG_LEVEL: info
+      CONTROL_TOKEN: ${CONTROL_TOKEN:?set in .env}
+      TARGETS_FILE: /data/targets.json
+      # Used only on first start (no /data/targets.json yet); afterwards edit targets in the UI.
+      TARGET_BASE_URLS: ${TARGET_BASE_URLS:-}
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:?set in .env}
+      # Drills change chaos on the MockPay next to it (same Compose network).
+      PROVIDER_ADMIN_URL: http://payment-provider:8080
+      PROVIDER_ADMIN_TOKEN: ${PROVIDER_ADMIN_TOKEN:-}
+      AUTOSTART: ${AUTOSTART:-false}
+      PROFILE: steady
+      BASE_RATE: "1"
+    ports:
+      # Set GENERATOR_BIND=127.0.0.1 to reach it only through an SSH tunnel.
+      - "${GENERATOR_BIND:-0.0.0.0}:${GENERATOR_PORT:-8091}:8080"
+    volumes:
+      - generator-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  provider-db: {}
+  generator-data: {}

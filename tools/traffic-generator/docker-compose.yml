@@ -1,0 +1,68 @@
+# Traffic generator: the INSTRUCTOR's tool. Runs outside minikube as its own Compose
+# project and is published only on this PC (http://localhost:8091), so students never get
+# its controls. It has no OpenTelemetry: it is "the users", not part of the system.
+#
+# It can drive several shop deployments ("targets") at once, e.g. every student's server.
+# The first target ("local") is created from this file's environment; add more in the
+# web UI. Targets are saved in the volume "generator-data".
+#
+# It joins Docker's "minikube" network so it can reach the local ingress (shop.local ->
+# 192.168.49.2) and the local payment provider's admin API for incident drills.
+#
+#   scripts/deploy.ps1 writes .env for you; otherwise copy .env.example to .env.
+#   docker compose up -d --build
+name: traffic-generator
+
+services:
+  traffic-generator:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        WORKSPACE: tools/traffic-generator
+        INSTRUMENT: "false"
+    image: shop/traffic-generator:dev
+    environment:
+      PORT: "8080"
+      OTEL_SERVICE_NAME: traffic-generator   # only the "service" field of its own logs
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CONTROL_TOKEN: ${CONTROL_TOKEN:?set CONTROL_TOKEN in .env}
+      TARGETS_FILE: /data/targets.json
+      # Default target (used only on first start, before targets.json exists)
+      DEFAULT_TARGET_NAME: local
+      TARGET_BASE_URL: http://shop.local/api
+      SEED_USER_PREFIX: shopper
+      SEED_USER_COUNT: ${SEED_USER_COUNT:-100}
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:?set SEED_USER_PASSWORD in .env}
+      PROVIDER_ADMIN_URL: http://${PROVIDER_IP:-192.168.49.100}:8080
+      PROVIDER_ADMIN_TOKEN: ${PROVIDER_ADMIN_TOKEN:-}
+      # Initial traffic shape (all adjustable in the web UI)
+      AUTOSTART: ${AUTOSTART:-true}
+      PROFILE: ${PROFILE:-steady}
+      BASE_RATE: ${BASE_RATE:-2}
+      MAX_CONCURRENT_JOURNEYS: ${MAX_CONCURRENT_JOURNEYS:-150}
+      FRESH_LOGIN_RATE: ${FRESH_LOGIN_RATE:-0.1}
+      THINK_TIME_MIN_MS: ${THINK_TIME_MIN_MS:-300}
+      THINK_TIME_MAX_MS: ${THINK_TIME_MAX_MS:-2000}
+      PERSONA_WEIGHTS: ${PERSONA_WEIGHTS:-window_shopper=55,cart_abandoner=25,buyer=15,returning_customer=4,misbehaving_client=1}
+    extra_hosts:
+      - "shop.local:${MINIKUBE_IP:-192.168.49.2}"
+    ports:
+      - "127.0.0.1:8091:8080"   # web UI + control API, this PC only
+    volumes:
+      - generator-data:/data
+    networks:
+      - minikube
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  minikube:
+    external: true
+
+volumes:
+  generator-data: {}

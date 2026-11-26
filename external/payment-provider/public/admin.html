@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MockPay Admin</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💳</text></svg>">
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --text:#1b2130; --muted:#667089; --border:#e1e5ec; --soft:#eef1f6; --accent:#0f8a6b; --accent-soft:#dff3ec;
+          --ok:#1f9d55; --warn:#d98b0b; --bad:#d33a4b; --info:#2b7bd6; --shadow:0 1px 2px rgba(16,24,40,.06); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#101319; --card:#181c24; --text:#e7eaf0; --muted:#98a1b4; --border:#2a303c; --soft:#212632;
+          --accent:#3fcf9f; --accent-soft:#163a30; --ok:#3ccf7c; --warn:#f0ad3c; --bad:#ff6b7a; --info:#5aa2f2; --shadow:none; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  header { background:var(--card); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:5; }
+  .bar { max-width:1200px; margin:0 auto; padding:10px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  h1 { font-size:17px; margin:0; } .sub { color:var(--muted); font-size:12px; }
+  main { max-width:1200px; margin:0 auto; padding:16px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:14px 16px; box-shadow:var(--shadow); min-width:0; }
+  .card h2 { font-size:14px; margin:0 0 4px; } .card p.d { color:var(--muted); font-size:12px; margin:0 0 12px; }
+  .grid { display:grid; gap:14px; } .two { grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr)); }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; } .spacer { flex:1; }
+  .knob { display:grid; grid-template-columns:1fr 92px; gap:4px 10px; align-items:center; padding:9px 0; border-top:1px solid var(--border); }
+  .knob:first-of-type { border-top:0; }
+  .knob label { font-weight:600; } .knob .h { grid-column:1 / -1; color:var(--muted); font-size:12px; margin-top:-2px; }
+  .knob input[type=range] { grid-column:1 / -1; width:100%; accent-color:var(--accent); }
+  .knob.changed label::after { content:" • modified"; color:var(--warn); font-weight:500; font-size:12px; }
+  input, select { font:inherit; color:var(--text); background:var(--card); border:1px solid var(--border); border-radius:6px; padding:5px 8px; width:100%; }
+  .val { text-align:right; font-variant-numeric:tabular-nums; }
+  button.btn { padding:7px 13px; border-radius:7px; border:1px solid var(--accent); background:var(--accent); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+  button.btn.ghost { background:transparent; color:var(--accent); } button.btn.sm { padding:3px 10px; font-size:12px; }
+  .presets { display:flex; gap:6px; flex-wrap:wrap; }
+  .presets button { border:1px solid var(--border); background:var(--soft); color:var(--text); border-radius:99px; padding:4px 11px; font:inherit; font-size:12.5px; cursor:pointer; }
+  .presets button:hover { border-color:var(--accent); }
+  .pill { display:inline-block; padding:1px 8px; border-radius:99px; font-size:12px; font-weight:600; background:var(--soft); }
+  .pill.ok { color:var(--ok); background:color-mix(in srgb,var(--ok) 16%,transparent); }
+  .pill.bad { color:var(--bad); background:color-mix(in srgb,var(--bad) 16%,transparent); }
+  .pill.warn { color:var(--warn); background:color-mix(in srgb,var(--warn) 18%,transparent); }
+  .pill.info { color:var(--info); background:color-mix(in srgb,var(--info) 16%,transparent); }
+  .tbl { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; font-variant-numeric:tabular-nums; }
+  th, td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  th { color:var(--muted); font-weight:600; font-size:11.5px; text-transform:uppercase; letter-spacing:.03em; }
+  code { font:12px ui-monospace,SFMono-Regular,Consolas,monospace; background:var(--soft); padding:1px 5px; border-radius:4px; }
+  .tiles { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); margin-bottom:12px; }
+  .tile { background:var(--soft); border-radius:8px; padding:8px 10px; } .tile .l { color:var(--muted); font-size:12px; } .tile .v { font-size:20px; font-weight:700; }
+  svg text { fill:var(--muted); font-size:10px; }
+  .legend { display:flex; gap:12px; font-size:12px; color:var(--muted); } .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
+  .hidden { display:none !important; }
+  .toast { position:fixed; bottom:16px; right:16px; background:var(--text); color:var(--bg); padding:9px 14px; border-radius:8px; opacity:0; transition:opacity .2s; pointer-events:none; }
+  .toast.show { opacity:.95; }
+  dialog { border:1px solid var(--border); border-radius:12px; background:var(--card); color:var(--text); padding:18px; width:min(460px,calc(100vw - 32px)); }
+  dialog::backdrop { background:rgba(0,0,0,.4); }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div><h1>💳 MockPay Admin</h1><div class="sub">External payment provider · not part of the shop · no telemetry to the shop's SigNoz</div></div>
+    <span class="spacer"></span>
+    <span id="health" class="pill">…</span>
+    <button class="btn sm ghost" id="tokenBtn">Token</button>
+  </div>
+</header>
+
+<main>
+  <div class="card" style="margin-bottom:14px">
+    <div class="row"><h2 style="margin:0">Presets</h2><span class="sub">Load values into the form, then press Apply.</span></div>
+    <div class="presets" id="presets" style="margin-top:8px"></div>
+  </div>
+
+  <div class="grid two">
+    <div class="card">
+      <h2>API behaviour</h2>
+      <p class="d">How <code>POST /v1/charges</code> answers the shop.</p>
+      <div id="knobs-api"></div>
+    </div>
+    <div class="card">
+      <h2>Webhooks</h2>
+      <p class="d">How the asynchronous result is delivered to <code>hooks.local/webhooks/payment-provider</code>.</p>
+      <div id="knobs-webhook"></div>
+    </div>
+  </div>
+
+  <div class="row" style="margin:14px 0">
+    <button class="btn" id="apply">Apply</button>
+    <button class="btn ghost" id="revert">Revert changes</button>
+    <button class="btn ghost" id="reset">Reset to defaults</button>
+    <span class="sub" id="msg"></span>
+  </div>
+
+  <div class="grid two">
+    <div class="card">
+      <h2>Charges (last 15 minutes)</h2>
+      <div class="tiles" id="tiles"></div>
+      <div id="chart"></div>
+      <div class="legend"><span><i style="background:var(--ok)"></i>succeeded</span><span><i style="background:var(--bad)"></i>failed</span><span><i style="background:var(--warn)"></i>pending</span></div>
+    </div>
+    <div class="card">
+      <h2>Webhook deliveries (last 15 minutes)</h2>
+      <div class="row" id="webhookResults" style="margin:6px 0 12px"></div>
+      <div class="tbl"><table id="deliveries"></table></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h2>Recent charges</h2>
+    <div class="tbl"><table id="charges"></table></div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <h2>Admin tokens</h2>
+    <p class="d">Tokens that may use this console and the admin API (for example one for the traffic generator's drills). A new token is shown only once.</p>
+    <form class="row" id="newTokenForm" style="margin-bottom:10px">
+      <input id="newTokenName" placeholder="name, e.g. traffic-generator" required maxlength="60" style="max-width:280px" aria-label="New token name">
+      <button class="btn sm" type="submit">Generate token</button>
+    </form>
+    <div id="newToken" class="hidden" style="margin-bottom:12px;padding:10px 12px;border-radius:8px;background:var(--accent-soft)">
+      <div class="row"><b>New token for <span id="newTokenFor"></span></b><span class="sub">copy it now, it will not be shown again</span></div>
+      <div class="row" style="margin-top:6px"><code id="newTokenValue" style="font-size:13px;word-break:break-all"></code><button class="btn sm ghost" id="copyToken" type="button">Copy</button></div>
+    </div>
+    <div class="tbl"><table id="tokens"></table></div>
+    <p class="sub" id="envTokenNote" style="margin-top:8px"></p>
+  </div>
+</main>
+
+<dialog id="tokenDialog">
+  <form method="dialog" id="tokenForm">
+    <h2 style="margin-top:0">Admin token</h2>
+    <p class="sub">PROVIDER_ADMIN_TOKEN from <code>external/payment-provider/.env</code>, a token generated in this console, or the bootstrap token printed in <code>docker compose logs payment-provider</code> on first start. Stored only in this browser.</p>
+    <input id="tokenInput" type="password" autocomplete="off" required>
+    <div class="row" style="margin-top:12px"><button class="btn" value="ok">Save</button></div>
+  </form>
+</dialog>
+<div class="toast" id="toast"></div>
+
+<script>
+const KNOBS = {
+  api: [
+    ["latencyMs", "Fixed latency", "ms", 0, 10000, 50, "Added to every API call. The shop times out after 3000 ms."],
+    ["latencyJitterMs", "Random extra latency", "ms", 0, 10000, 50, "Up to this much more, random per call."],
+    ["errorRate", "Error rate", "%", 0, 1, 0.01, "Answer HTTP 500/503 without creating a charge. The shop retries, then its circuit breaker opens."],
+    ["timeoutRate", "Hang rate", "%", 0, 1, 0.01, "Create the charge, then hang. The shop gives up, but the customer is charged anyway (late success → refund)."],
+    ["hangMs", "Hang duration", "ms", 1000, 120000, 1000, "How long a hanging request waits before answering."],
+    ["declineRate", "Card decline rate (sync)", "%", 0, 1, 0.01, "Decline immediately with HTTP 402."],
+  ],
+  webhook: [
+    ["webhookDelayMs", "Webhook delay", "ms", 0, 120000, 500, "Time between charge creation and the result webhook (+ up to 1 s)."],
+    ["asyncDeclineRate", "Card decline rate (async)", "%", 0, 1, 0.01, "Accept as pending, then report charge.failed in the webhook."],
+    ["dropWebhookRate", "Dropped webhooks", "%", 0, 1, 0.01, "Never send the webhook. The shop's reconciler has to poll for the result."],
+    ["duplicateWebhookRate", "Duplicate webhooks", "%", 0, 1, 0.01, "Send the same event twice. The shop must process it only once."],
+    ["badSignatureRate", "Invalid signatures", "%", 0, 1, 0.01, "Sign with the wrong secret. The shop must reject it (401) and log a security warning."],
+    ["webhookMaxAttempts", "Delivery attempts", "", 1, 10, 1, "Retries with exponential backoff (1 s, 2 s, 4 s, …) when the shop does not answer 2xx."],
+  ],
+};
+const ALL = [...KNOBS.api, ...KNOBS.webhook];
+const PRESETS = {
+  "Healthy": {},
+  "Slow provider": { latencyMs: 2500, latencyJitterMs: 1500 },
+  "Outage (70% errors)": { errorRate: 0.7 },
+  "Hanging charges": { timeoutRate: 0.3, hangMs: 30000 },
+  "Decline wave": { declineRate: 0.4, asyncDeclineRate: 0.2 },
+  "Lost webhooks": { dropWebhookRate: 0.5 },
+  "Duplicate webhooks": { duplicateWebhookRate: 0.5 },
+  "Forged webhooks": { badSignatureRate: 0.5 },
+  "Slow webhooks": { webhookDelayMs: 45000 },
+};
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+let token = ""; try { token = localStorage.getItem("mockpay-admin-token") || ""; } catch {}
+let current = null, defaults = null;
+
+function toast(m) { const t = $("toast"); t.textContent = m; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2500); }
+function askToken() { if (!$("tokenDialog").open) { $("tokenInput").value = token; $("tokenDialog").showModal(); } }
+$("tokenForm").addEventListener("submit", () => { token = $("tokenInput").value.trim(); try { localStorage.setItem("mockpay-admin-token", token); } catch {} load(); });
+$("tokenBtn").onclick = askToken;
+
+async function call(method, url, body) {
+  const res = await fetch(url, { method, headers: { authorization: "Bearer " + token, "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  if (res.status === 401) { askToken(); throw new Error("invalid admin token"); }
+  if (!res.ok) throw new Error(res.status + " " + (await res.text()));
+  return res.json();
+}
+
+const show = (unit, v) => (unit === "%" ? Math.round(v * 100) + " %" : unit === "ms" ? Number(v).toLocaleString() + " ms" : v);
+function buildKnobs() {
+  for (const [group, list] of Object.entries(KNOBS)) {
+    $("knobs-" + group).innerHTML = list.map(([k, label, unit, min, max, step, help]) => `
+      <div class="knob" id="k-${k}">
+        <label for="n-${k}">${label}</label>
+        <input id="n-${k}" class="val" type="number" min="${unit === "%" ? 0 : min}" max="${unit === "%" ? 100 : max}" step="${unit === "%" ? 1 : step}" aria-label="${label} value">
+        <input id="r-${k}" type="range" min="${min}" max="${max}" step="${step}" aria-label="${label}">
+        <div class="h">${help}</div>
+      </div>`).join("");
+  }
+  for (const [k, , unit] of ALL) {
+    const toNum = (v) => (unit === "%" ? Math.round(v * 100) : v);
+    $("r-" + k).oninput = () => { $("n-" + k).value = toNum(Number($("r-" + k).value)); mark(); };
+    $("n-" + k).oninput = () => { $("r-" + k).value = unit === "%" ? Number($("n-" + k).value) / 100 : $("n-" + k).value; mark(); };
+  }
+  $("presets").innerHTML = Object.keys(PRESETS).map((p) => `<button data-p="${esc(p)}">${esc(p)}</button>`).join("");
+  for (const b of $("presets").children) b.onclick = () => { if (!defaults) return; fill({ ...defaults, ...PRESETS[b.dataset.p] }); mark(); toast(`"${b.dataset.p}" loaded, press Apply`); };
+}
+// Read from the number fields: sliders snap to their step and would change values on their own.
+function read() { const o = {}; for (const [k, , unit] of ALL) { const n = Number($("n-" + k).value); o[k] = unit === "%" ? Math.round(n) / 100 : n; } return o; }
+function fill(c) { for (const [k, , unit] of ALL) { $("r-" + k).value = c[k]; $("n-" + k).value = unit === "%" ? Math.round(c[k] * 100) : c[k]; } }
+function mark() { if (!current) return; const v = read(); for (const [k] of ALL) $("k-" + k).classList.toggle("changed", v[k] !== current[k]); }
+
+function chart(rows) {
+  const W = 520, H = 120, P = 24, now = Date.now();
+  const mins = Array.from({ length: 15 }, (_, i) => { const t = new Date(now - (14 - i) * 60000); t.setSeconds(0, 0); return t.getTime(); });
+  const by = new Map(rows.map((r) => [new Date(r.minute).getTime(), r]));
+  const data = mins.map((m) => by.get(m) || { succeeded: 0, failed: 0, pending: 0, total: 0 });
+  const max = Math.max(1, ...data.map((d) => d.total));
+  const bw = (W - P) / data.length;
+  let s = `<svg viewBox="0 0 ${W} ${H + 14}" width="100%" role="img" aria-label="charges per minute"><text x="0" y="12">${max}</text>`;
+  data.forEach((d, i) => {
+    let y = H;
+    for (const [k, c] of [["succeeded", "--ok"], ["failed", "--bad"], ["pending", "--warn"]]) {
+      if (!d[k]) continue; const h = (H - 6) * d[k] / max; y -= h;
+      s += `<rect x="${P + i * bw + 1}" y="${y}" width="${bw - 2}" height="${h}" rx="2" style="fill:var(${c})"><title>${new Date(mins[i]).toLocaleTimeString()} ${k}: ${d[k]}</title></rect>`;
+    }
+  });
+  return s + `<line x1="${P}" x2="${W}" y1="${H}" y2="${H}" style="stroke:var(--border)"/><text x="${P}" y="${H + 12}">-15 min</text><text x="${W - 22}" y="${H + 12}">now</text></svg>`;
+}
+const statusPill = (s) => `<span class="pill ${s === "succeeded" ? "ok" : s === "failed" ? "bad" : s === "pending" ? "warn" : "info"}">${esc(s)}</span>`;
+
+async function stats() {
+  const s = await call("GET", "/admin/stats");
+  const count = (st) => s.chargesByStatus.find((r) => r.status === st)?.count || 0;
+  const total = s.chargesByStatus.reduce((n, r) => n + r.count, 0);
+  $("tiles").innerHTML = [["Charges", total], ["Succeeded", count("succeeded")], ["Failed", count("failed")], ["Pending", count("pending")], ["Refunded", count("refunded")]]
+    .map(([l, v]) => `<div class="tile"><div class="l">${l}</div><div class="v">${v}</div></div>`).join("");
+  $("chart").innerHTML = chart(s.chargesPerMinute);
+  $("webhookResults").innerHTML = s.webhookResults.map((r) => `<span class="pill ${r.result === "delivered" ? "ok" : r.result === "dropped" ? "warn" : "bad"}">${esc(r.result)} ${r.count}</span>`).join("") || '<span class="sub">none yet</span>';
+  $("deliveries").innerHTML = `<tr><th>Time</th><th>Event</th><th>Charge</th><th>Attempt</th><th>Result</th><th>Note</th></tr>` + s.recentWebhookDeliveries.map((d) =>
+    `<tr><td>${new Date(d.created_at).toLocaleTimeString()}</td><td>${esc(d.type)}</td><td><code>${esc(d.charge_id.slice(0, 14))}</code></td><td>${d.attempt}</td><td>${d.status_code ? `<span class="pill ${d.status_code < 300 ? "ok" : "bad"}">${d.status_code}</span>` : d.error ? `<span class="pill bad">${esc(d.error.slice(0, 40))}</span>` : "–"}</td><td>${esc(d.note || "")}</td></tr>`).join("");
+  $("charges").innerHTML = `<tr><th>Created</th><th>Charge</th><th>Merchant reference (payment id)</th><th>Amount</th><th>Status</th><th>Failure</th></tr>` + s.recentCharges.map((c) =>
+    `<tr><td>${new Date(c.created_at).toLocaleTimeString()}</td><td><code>${esc(c.id)}</code></td><td><code>${esc(c.merchant_reference)}</code></td><td>$${(c.amount_cents / 100).toFixed(2)}</td><td>${statusPill(c.status)}</td><td>${esc(c.failure_code || "")}</td></tr>`).join("");
+}
+
+async function load() {
+  if (!token) return askToken();
+  try {
+    current = await call("GET", "/admin/chaos");
+    fill(current); mark();
+    $("health").className = "pill ok"; $("health").textContent = "connected";
+    await stats();
+    await tokens();
+  } catch (e) { $("health").className = "pill bad"; $("health").textContent = "error"; toast(e.message); }
+}
+async function loadDefaults() {
+  try { defaults = await call("GET", "/admin/chaos/defaults"); } catch { defaults = { ...current }; }
+}
+
+async function tokens() {
+  const t = await call("GET", "/admin/tokens");
+  $("tokens").innerHTML = `<tr><th>Name</th><th>Id</th><th>Ends with</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr>` +
+    (t.items.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td><code>${esc(x.id)}</code></td><td><code>…${esc(x.token_hint)}</code></td><td>${new Date(x.created_at).toLocaleString()}</td>
+      <td>${x.last_used_at ? new Date(x.last_used_at).toLocaleString() : "never"}</td><td>${x.revoked_at ? '<span class="pill bad">revoked</span>' : '<span class="pill ok">active</span>'}</td>
+      <td>${x.revoked_at ? "" : `<button class="btn sm ghost" onclick="revokeToken('${esc(x.id)}','${esc(x.name)}')">Revoke</button>`}</td></tr>`).join("") || `<tr><td class="sub">No generated tokens.</td></tr>`);
+  $("envTokenNote").textContent = t.environmentTokenConfigured ? "PROVIDER_ADMIN_TOKEN from the environment (.env) is also accepted; change it there." : "";
+}
+$("newTokenForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    const t = await call("POST", "/admin/tokens", { name: $("newTokenName").value.trim() });
+    $("newTokenFor").textContent = t.name; $("newTokenValue").textContent = t.token; $("newToken").classList.remove("hidden");
+    $("newTokenName").value = ""; await tokens();
+  } catch (err) { toast(err.message); }
+});
+$("copyToken").onclick = async () => { try { await navigator.clipboard.writeText($("newTokenValue").textContent); toast("copied"); } catch { toast("select the token and copy it manually"); } };
+window.revokeToken = async (id, name) => {
+  if (!confirm(`Revoke token "${name}"? Anything using it will get 401.`)) return;
+  try { await call("DELETE", `/admin/tokens/${id}`); toast("revoked"); await tokens(); } catch (e) { toast(e.message); }
+};
+
+$("apply").onclick = async () => { try { current = await call("PUT", "/admin/chaos", read()); fill(current); mark(); toast("applied"); } catch (e) { toast(e.message); } };
+$("revert").onclick = () => { if (current) { fill(current); mark(); } };
+$("reset").onclick = async () => { try { current = await call("POST", "/admin/chaos/reset"); defaults = { ...current }; fill(current); mark(); toast("reset to defaults"); } catch (e) { toast(e.message); } };
+
+buildKnobs();
+(async () => { await load(); if (current) loadDefaults(); })();
+setInterval(() => { if (token && !document.hidden) stats().catch(() => {}); }, 5000);
+</script>
+</body>
+</html>

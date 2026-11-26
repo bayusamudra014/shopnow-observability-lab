@@ -1,0 +1,27 @@
+# SigNoz k8s-infra: an OpenTelemetry agent on every node that collects
+#   - container logs from /var/log/pods (filelog receiver) with Kubernetes metadata
+#   - node, pod and container metrics from the kubelet
+#   - cluster metrics/events
+# and sends them to the SigNoz collector.
+#
+# Our shop services send their logs over OTLP directly (with trace ids), so the shop
+# namespace is excluded here to avoid every log line appearing twice. Postgres, Kafka,
+# Redis, Mailpit and ingress-nginx logs are still collected from their files.
+global:
+  clusterName: minikube
+  deploymentEnvironment: minikube
+
+# Recent chart versions export over OTLP/HTTP and need a full URL (scheme + port 4318).
+otelCollectorEndpoint: http://signoz-otel-collector.platform.svc.cluster.local:4318
+otelInsecure: true
+
+presets:
+  logsCollection:
+    enabled: true
+    blacklist:
+      enabled: true
+      signozLogs: true
+      namespaces:
+        - kube-system
+        - platform
+        - shop

@@ -1,0 +1,72 @@
+# The shop for a student VM (rendered by scripts/release.ps1 from deploy/k8s into the student kit):
+#   - images come from Harbor (no building on the VM)
+#   - public hosts and URLs are placeholders (__SHOP_HOST__, __MAIL_HOST__, __SIGNOZ_HOST__,
+#     __SHOP_PUBLIC_URL__, __PROVIDER_URL__, __WEBHOOK_CALLBACK_URL__) that the kit's deploy.sh
+#     fills from shopnow.env; nothing environment-specific is hard-coded here
+#   - the payment provider is external (no in-cluster Service)
+# KIT_REGISTRY / KIT_TAG are filled by scripts/release.ps1.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../k8s
+  - ingress.yaml
+
+images:
+  - { name: shop/api-gateway, newName: KIT_REGISTRY/shopnow-api-gateway, newTag: KIT_TAG }
+  - { name: shop/auth, newName: KIT_REGISTRY/shopnow-auth, newTag: KIT_TAG }
+  - { name: shop/catalog, newName: KIT_REGISTRY/shopnow-catalog, newTag: KIT_TAG }
+  - { name: shop/cart, newName: KIT_REGISTRY/shopnow-cart, newTag: KIT_TAG }
+  - { name: shop/order, newName: KIT_REGISTRY/shopnow-order, newTag: KIT_TAG }
+  - { name: shop/inventory, newName: KIT_REGISTRY/shopnow-inventory, newTag: KIT_TAG }
+  - { name: shop/payment, newName: KIT_REGISTRY/shopnow-payment, newTag: KIT_TAG }
+  - { name: shop/notification, newName: KIT_REGISTRY/shopnow-notification, newTag: KIT_TAG }
+  - { name: shop/frontend, newName: KIT_REGISTRY/shopnow-frontend, newTag: KIT_TAG }
+
+patches:
+  # Pull from the registry instead of expecting a locally built image.
+  - target: { kind: Deployment, namespace: shop }
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  # Public URLs of this VM and the shared provider.
+  - patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata: { name: shop-common, namespace: shop }
+      data:
+        JWT_ISSUER: __SHOP_PUBLIC_URL__/api/auth
+        SHOP_PUBLIC_URL: __SHOP_PUBLIC_URL__
+        PROVIDER_URL: __PROVIDER_URL__
+        PROVIDER_WEBHOOK_CALLBACK_URL: __WEBHOOK_CALLBACK_URL__
+  # The local-lab ingresses (*.local) and the in-cluster stand-in for the provider are not used.
+  - patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata: { name: shop, namespace: shop }
+  - patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata: { name: mailpit, namespace: infra }
+  - patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata: { name: signoz, namespace: platform }
+  - patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata: { name: otlp, namespace: platform }
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata: { name: payment-provider, namespace: external }
+  - patch: |-
+      $patch: delete
+      apiVersion: discovery.k8s.io/v1
+      kind: EndpointSlice
+      metadata: { name: payment-provider-1, namespace: external }

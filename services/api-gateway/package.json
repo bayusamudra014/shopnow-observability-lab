@@ -1,0 +1,16 @@
+{
+  "name": "@shop/api-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node --require @shop/telemetry/register dist/main.js"
+  },
+  "dependencies": {
+    "@shop/contracts": "*",
+    "@shop/telemetry": "*",
+    "fastify": "^5.12.8",
+    "jose": "^5.10.0"
+  }
+}

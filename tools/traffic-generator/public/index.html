@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traffic Generator</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚦</text></svg>">
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #1b2130; --muted: #667089; --border: #e1e5ec; --soft: #eef1f6;
+    --accent: #4f46e5; --accent-soft: #eceafe;
+    --c2xx: #1f9d55; --c3xx: #2b7bd6; --c4xx: #d98b0b; --c5xx: #d33a4b; --cerr: #7c4bc2;
+    --shadow: 0 1px 2px rgba(16,24,40,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101319; --card: #181c24; --text: #e7eaf0; --muted: #98a1b4; --border: #2a303c; --soft: #212632;
+      --accent: #8b84ff; --accent-soft: #2a2850;
+      --c2xx: #3ccf7c; --c3xx: #5aa2f2; --c4xx: #f0ad3c; --c5xx: #ff6b7a; --cerr: #b48cf0;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
+  .bar { max-width: 1280px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  h1 { font-size: 17px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+  nav button { background: none; border: 0; padding: 6px 10px; border-radius: 6px; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; }
+  nav button.on { background: var(--accent-soft); color: var(--accent); }
+  main { max-width: 1280px; margin: 0 auto; padding: 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; box-shadow: var(--shadow); min-width: 0; }
+  .card h2 { font-size: 14px; margin: 0 0 10px; }
+  .grid { display: grid; gap: 14px; }
+  .tiles { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .two { grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); }
+  .tile .label { color: var(--muted); font-size: 12px; } .tile .value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); } .small { font-size: 12px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .spacer { flex: 1; }
+  button.btn { padding: 7px 13px; border-radius: 7px; border: 1px solid var(--accent); background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  button.btn.ghost { background: transparent; color: var(--accent); }
+  button.btn.danger { background: var(--c5xx); border-color: var(--c5xx); }
+  button.btn.sm { padding: 3px 9px; font-size: 12px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  input, select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; width: 100%; }
+  input[type=checkbox] { width: auto; } input[type=range] { padding: 0; }
+  label.f { display: block; font-weight: 600; font-size: 12px; margin-bottom: 3px; }
+  .hint { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .form { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--soft); }
+  .pill.ok { background: color-mix(in srgb, var(--c2xx) 18%, transparent); color: var(--c2xx); }
+  .pill.bad { background: color-mix(in srgb, var(--c5xx) 18%, transparent); color: var(--c5xx); }
+  .pill.warn { background: color-mix(in srgb, var(--c4xx) 20%, transparent); color: var(--c4xx); }
+  .tbl { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; }
+  td.num, th.num { text-align: right; }
+  td.wrap { white-space: normal; min-width: 200px; }
+  code { font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; background: var(--soft); padding: 1px 5px; border-radius: 4px; }
+  .s2xx { color: var(--c2xx); } .s3xx { color: var(--c3xx); } .s4xx { color: var(--c4xx); } .s5xx { color: var(--c5xx); } .serror { color: var(--cerr); }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  svg text { fill: var(--muted); font-size: 10px; }
+  .codebar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--soft); margin: 6px 0 10px; }
+  .banner { border-radius: 8px; padding: 10px 12px; background: color-mix(in srgb, var(--c4xx) 16%, transparent); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .toast { position: fixed; bottom: 16px; right: 16px; background: var(--text); color: var(--bg); padding: 9px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100vw - 32px); }
+  .toast.show { opacity: .95; }
+  .hidden { display: none !important; }
+  dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--text); padding: 18px; width: min(680px, calc(100vw - 32px)); }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  .profiles { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+  .pcard { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; background: var(--card); }
+  .pcard.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .pcard .t { font-weight: 700; } .pcard .d { color: var(--muted); font-size: 12px; flex: 1; }
+  .pcard svg { display: block; }
+  .note { border-radius: 8px; padding: 8px 10px; background: var(--accent-soft); font-size: 12.5px; margin-bottom: 10px; }
+  .weight { display: grid; grid-template-columns: 150px 1fr 70px 50px; gap: 8px; align-items: center; margin-bottom: 6px; }
+  @media (max-width: 560px) { .weight { grid-template-columns: 1fr 70px; } .weight input[type=range] { grid-column: 1 / -1; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1>🚦 Traffic Generator</h1>
+    <nav id="tabs">
+      <button data-tab="dashboard" class="on">Dashboard</button>
+      <button data-tab="settings">Settings</button>
+      <button data-tab="targets">Targets</button>
+      <button data-tab="drills">Drills</button>
+    </nav>
+    <span id="runState" class="pill">…</span>
+    <button class="btn sm" id="toggleRun">…</button>
+    <button class="btn sm ghost" id="tokenBtn" title="Change control token">Token</button>
+  </div>
+</header>
+
+<main>
+  <div id="drillBanner" class="banner hidden"></div>
+
+  <!-- DASHBOARD -->
+  <section id="tab-dashboard">
+    <div class="row" style="margin-bottom:12px">
+      <label class="f" for="targetFilter" style="margin:0">Target</label>
+      <select id="targetFilter" style="width:auto"></select>
+      <span class="muted small" id="since"></span>
+      <span class="spacer"></span>
+      <button class="btn sm ghost" id="resetStats">Reset statistics</button>
+    </div>
+    <div class="grid tiles" id="tiles"></div>
+    <div class="grid two" style="margin-top:14px">
+      <div class="card">
+        <h2>Responses per 10s, by status class (last 15 min)</h2>
+        <div id="chartStatus"></div>
+        <div class="legend" id="legend"></div>
+      </div>
+      <div class="card">
+        <h2>Average latency per 10s (ms)</h2>
+        <div id="chartLatency"></div>
+        <h2 style="margin-top:12px">Status codes (since reset)</h2>
+        <div id="codes"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h2>Endpoints</h2>
+      <div class="tbl"><table id="endpoints"></table></div>
+    </div>
+    <div class="grid two" style="margin-top:14px">
+      <div class="card">
+        <h2>Recent failed requests (4xx, 5xx, network)</h2>
+        <p class="muted small" style="margin:-6px 0 8px">Copy a request id and search for it in the shop's SigNoz logs.</p>
+        <div class="tbl"><table id="failures"></table></div>
+      </div>
+      <div class="card">
+        <h2>Journey outcomes</h2>
+        <div class="tbl"><table id="outcomes"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="tab-settings" class="hidden">
+    <div class="card" style="margin-bottom:14px">
+      <div class="row"><h2 style="margin:0">Traffic profiles</h2><span class="muted small">Activate switches immediately. Curves show the rate multiplier over time; some profiles bring their own persona mix and hot products.</span></div>
+      <div class="grid profiles" id="profileCards" style="margin-top:10px"></div>
+    </div>
+    <div class="grid two">
+      <div class="card">
+        <h2>Traffic shape</h2>
+        <div class="form">
+          <div><label class="f" for="s-baseRate">Base rate (journeys/s per target)</label><input id="s-baseRate" type="number" step="0.1" min="0"><div class="hint">At profile multiplier 1. A journey makes ~5–15 requests.</div></div>
+          <div><label class="f" for="s-maxConcurrent">Max concurrent journeys (per target)</label><input id="s-maxConcurrent" type="number" min="1"><div class="hint">Above this, new journeys are skipped.</div></div>
+          <div><label class="f" for="s-peakMultiplier">Peak multiplier</label><input id="s-peakMultiplier" type="number" step="0.5" min="1"><div class="hint">Used by flash-sale and ramp.</div></div>
+          <div><label class="f" for="s-rampSeconds">Ramp duration (s)</label><input id="s-rampSeconds" type="number" min="10"></div>
+          <div><label class="f" for="s-diurnalPeriodSeconds">Diurnal period (s)</label><input id="s-diurnalPeriodSeconds" type="number" min="60"><div class="hint">One compressed "day".</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>User behaviour</h2>
+        <div class="form">
+          <div><label class="f" for="s-thinkMin">Think time min (ms)</label><input id="s-thinkMin" type="number" min="0"></div>
+          <div><label class="f" for="s-thinkMax">Think time max (ms)</label><input id="s-thinkMax" type="number" min="0"><div class="hint">Random pause between steps.</div></div>
+          <div><label class="f" for="s-freshLoginRate">Fresh login rate: <span id="freshLoginLabel"></span></label><input id="s-freshLoginRate" type="range" min="0" max="1" step="0.05"><div class="hint">Share of journeys that log in again (bcrypt load on auth).</div></div>
+        </div>
+        <h2 style="margin-top:16px">Persona weights</h2>
+        <div id="weightsNote" class="note hidden"></div>
+        <div id="weights"></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn" id="saveSettings">Apply settings</button>
+      <button class="btn ghost" id="revertSettings">Revert</button>
+      <span class="muted small">Changes apply immediately to all targets.</span>
+    </div>
+  </section>
+
+  <!-- TARGETS -->
+  <section id="tab-targets" class="hidden">
+    <div class="card">
+      <div class="row" style="margin-bottom:8px"><h2 style="margin:0">Targets</h2><span class="spacer"></span><button class="btn sm" id="addTarget">Add target</button></div>
+      <p class="muted small" style="margin:0 0 10px">Each target is one shop deployment (for example a student's minikube). Journeys run against every enabled target at the same time.</p>
+      <div class="tbl"><table id="targetsTable"></table></div>
+    </div>
+    <div class="card hidden" id="testResult" style="margin-top:14px"></div>
+  </section>
+
+  <!-- DRILLS -->
+  <section id="tab-drills" class="hidden">
+    <div class="card">
+      <h2>Incident drills</h2>
+      <p class="muted small" style="margin:-4px 0 10px">A drill changes the traffic profile and/or the chaos settings of the targets' payment providers, then reverts automatically.</p>
+      <div class="row" style="margin-bottom:12px">
+        <span class="f" style="font-weight:600;font-size:12px">Apply to:</span>
+        <span id="drillTargets" class="row"></span>
+        <label class="f" for="drillDuration" style="margin:0 0 0 12px">Duration (s, empty = default)</label>
+        <input id="drillDuration" type="number" min="10" style="width:110px">
+      </div>
+      <div class="tbl"><table id="drillsTable"></table></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="targetDialog">
+  <form method="dialog" id="targetForm">
+    <h2 style="margin-top:0" id="targetDialogTitle">Target</h2>
+    <div class="form">
+      <div><label class="f" for="t-name">Name</label><input id="t-name" required pattern="[a-z0-9][a-z0-9-]*" placeholder="student-07"><div class="hint">lowercase, digits, dashes</div></div>
+      <div style="grid-column: span 2"><label class="f" for="t-baseUrl">API base URL</label><input id="t-baseUrl" required placeholder="http://shop.local/api"></div>
+      <div><label class="f" for="t-resolveTo">Connect to IP (optional)</label><input id="t-resolveTo" placeholder="192.168.1.57"><div class="hint">Keeps the URL's hostname (ingress Host) but connects here.</div></div>
+      <div><label class="f" for="t-rateMultiplier">Rate multiplier</label><input id="t-rateMultiplier" type="number" step="0.1" min="0" value="1"></div>
+      <div><label class="f" for="t-enabled">Enabled</label><input id="t-enabled" type="checkbox" checked></div>
+      <div><label class="f" for="t-seedUserPrefix">Seed user prefix</label><input id="t-seedUserPrefix" value="shopper"></div>
+      <div><label class="f" for="t-seedUserCount">Seed user count</label><input id="t-seedUserCount" type="number" min="1" value="100"></div>
+      <div><label class="f" for="t-seedUserPassword">Seed user password</label><input id="t-seedUserPassword" type="password" autocomplete="off"><div class="hint" id="pwHint">SEED_USER_PASSWORD of that deployment</div></div>
+      <div style="grid-column: span 2"><label class="f" for="t-providerAdminUrl">Payment provider admin URL (optional)</label><input id="t-providerAdminUrl" placeholder="http://192.168.49.100:8080"></div>
+      <div><label class="f" for="t-providerAdminToken">Provider admin token</label><input id="t-providerAdminToken" type="password" autocomplete="off"><div class="hint" id="tokHint">needed for chaos drills</div></div>
+    </div>
+    <div class="row" style="margin-top:16px">
+      <button class="btn" value="save" id="targetSave">Save</button>
+      <button class="btn ghost" value="cancel" formnovalidate>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="tokenDialog">
+  <form method="dialog" id="tokenForm">
+    <h2 style="margin-top:0">Control token</h2>
+    <p class="muted small">CONTROL_TOKEN from <code>tools/traffic-generator/.env</code> (TRAFFIC_CONTROL_TOKEN in <code>.secrets/secrets.env</code>). Stored only in this browser.</p>
+    <input id="tokenInput" type="password" autocomplete="off" required>
+    <div class="row" style="margin-top:12px"><button class="btn" value="ok">Save</button></div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const fmt = (n) => (n ?? 0).toLocaleString();
+const CLASSES = ["2xx", "3xx", "4xx", "5xx", "error"];
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const color = (k) => css(`--c${k}`);
+const clsOf = (s) => (s === "error" ? "error" : `${String(s)[0]}xx`);
+
+let token = "";
+try { token = localStorage.getItem("tg-token") || ""; } catch {}
+let status = null, tab = "dashboard", filter = "all", editing = null, settingsDirty = false;
+try { tab = localStorage.getItem("tg-tab") || "dashboard"; } catch {}
+
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600); }
+
+async function api(method, path, body) {
+  const res = await fetch(path, { method, headers: { authorization: "Bearer " + token, ...(body !== undefined ? { "content-type": "application/json" } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) { askToken(); throw new Error("invalid control token"); }
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  return data;
+}
+
+function askToken() { if (!$("tokenDialog").open) { $("tokenInput").value = token; $("tokenDialog").showModal(); } }
+$("tokenForm").addEventListener("submit", () => { token = $("tokenInput").value.trim(); try { localStorage.setItem("tg-token", token); } catch {} refresh(); });
+$("tokenBtn").onclick = askToken;
+
+// ---------- tabs
+function showTab(name) {
+  tab = name;
+  try { localStorage.setItem("tg-tab", name); } catch {}
+  for (const b of $("tabs").children) b.classList.toggle("on", b.dataset.tab === name);
+  for (const s of document.querySelectorAll("main > section")) s.classList.toggle("hidden", s.id !== "tab-" + name);
+  if (name === "settings" && status && !settingsDirty) fillSettings();
+}
+for (const b of $("tabs").children) b.onclick = () => showTab(b.dataset.tab);
+
+// ---------- charts (plain SVG)
+function stackedBars(series) {
+  const W = 600, H = 170, P = 26;
+  const max = Math.max(1, ...series.map((b) => b.total));
+  const bw = (W - P) / series.length;
+  let out = `<svg viewBox="0 0 ${W} ${H + 16}" width="100%" role="img" aria-label="responses per 10 seconds">`;
+  for (const f of [0.5, 1]) { const y = H - (H - 8) * f; out += `<line x1="${P}" x2="${W}" y1="${y}" y2="${y}" stroke="${css("--border")}"/><text x="0" y="${y + 3}">${Math.round(max * f)}</text>`; }
+  series.forEach((b, i) => {
+    let y = H;
+    for (const k of CLASSES) {
+      if (!b[k]) continue;
+      const h = (H - 8) * (b[k] / max);
+      y -= h;
+      out += `<rect x="${P + i * bw + 0.5}" y="${y}" width="${Math.max(1, bw - 1)}" height="${h}" fill="${color(k)}"><title>${new Date(b.t).toLocaleTimeString()} ${k}: ${b[k]}</title></rect>`;
+    }
+  });
+  out += `<line x1="${P}" x2="${W}" y1="${H}" y2="${H}" stroke="${css("--border")}"/>`;
+  out += `<text x="${P}" y="${H + 13}">-15 min</text><text x="${W - 22}" y="${H + 13}">now</text></svg>`;
+  return out;
+}
+function line(series) {
+  const W = 600, H = 120, P = 30;
+  const max = Math.max(10, ...series.map((b) => b.avgMs));
+  const step = (W - P) / Math.max(1, series.length - 1);
+  const pts = series.map((b, i) => `${P + i * step},${H - (H - 8) * (b.avgMs / max)}`).join(" ");
+  let out = `<svg viewBox="0 0 ${W} ${H + 4}" width="100%" role="img" aria-label="average latency">`;
+  for (const f of [0.5, 1]) { const y = H - (H - 8) * f; out += `<line x1="${P}" x2="${W}" y1="${y}" y2="${y}" stroke="${css("--border")}"/><text x="0" y="${y + 3}">${Math.round(max * f)}</text>`; }
+  out += `<polyline points="${pts}" fill="none" stroke="${css("--accent")}" stroke-width="2"/>`;
+  out += `<line x1="${P}" x2="${W}" y1="${H}" y2="${H}" stroke="${css("--border")}"/></svg>`;
+  return out;
+}
+
+// ---------- dashboard
+function renderStats(s) {
+  $("since").textContent = "statistics since " + new Date(s.since).toLocaleTimeString();
+  const m = s.summary;
+  const tiles = [
+    ["Requests / s (last min)", m.rps],
+    ["5xx + network errors", m.serverErrorRate + "%", m.serverErrorRate > 1 ? "s5xx" : ""],
+    ["4xx responses", m.clientErrorRate + "%", m.clientErrorRate > 10 ? "s4xx" : ""],
+    ["Latency p50", m.p50 + " ms"],
+    ["Latency p95", m.p95 + " ms", m.p95 > 1000 ? "s4xx" : ""],
+    ["Latency p99", m.p99 + " ms", m.p99 > 3000 ? "s5xx" : ""],
+    ["Total requests", fmt(m.totalRequests)],
+  ];
+  $("tiles").innerHTML = tiles.map(([l, v, c]) => `<div class="card tile"><div class="label">${l}</div><div class="value ${c || ""}">${v}</div></div>`).join("");
+  $("chartStatus").innerHTML = stackedBars(s.series);
+  $("legend").innerHTML = CLASSES.map((k) => `<span><i style="background:${color(k)}"></i>${k === "error" ? "network error" : k}</span>`).join("");
+  $("chartLatency").innerHTML = line(s.series);
+
+  const codes = Object.entries(s.codes).sort((a, b) => b[1] - a[1]);
+  const total = codes.reduce((n, [, v]) => n + v, 0) || 1;
+  $("codes").innerHTML = `<div class="codebar">${codes.map(([c, n]) => `<span title="${c}: ${n}" style="width:${(n / total) * 100}%;background:${color(clsOf(c))}"></span>`).join("")}</div>` +
+    `<div class="row">${codes.map(([c, n]) => `<span class="pill"><b class="s${clsOf(c)}">${esc(c)}</b> ${fmt(n)} <span class="muted">(${((n / total) * 100).toFixed(1)}%)</span></span>`).join("")}</div>`;
+
+  const multi = filter === "all";
+  $("endpoints").innerHTML = `<tr>${multi ? "<th>Target</th>" : ""}<th>Endpoint</th><th class="num">Requests</th>${CLASSES.map((k) => `<th class="num s${k}">${k === "error" ? "net err" : k}</th>`).join("")}<th class="num">p50</th><th class="num">p95</th><th class="num">p99</th><th>Last</th><th>Last error</th></tr>` +
+    s.endpoints.map((e) => {
+      const by = { "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0, error: 0 };
+      for (const [c, n] of Object.entries(e.codes)) by[clsOf(c)] += n;
+      return `<tr>${multi ? `<td>${esc(e.target)}</td>` : ""}<td><code>${esc(e.method)} ${esc(e.route)}</code></td><td class="num">${fmt(e.total)}</td>${CLASSES.map((k) => `<td class="num ${by[k] && k !== "2xx" ? "s" + k : "muted"}">${by[k] ? fmt(by[k]) : "–"}</td>`).join("")}<td class="num">${e.p50}</td><td class="num">${e.p95}</td><td class="num">${e.p99}</td><td class="s${clsOf(e.lastStatus)}">${esc(e.lastStatus)}</td><td class="wrap muted">${esc(e.lastError || "")}</td></tr>`;
+    }).join("") || `<tr><td class="muted">No requests yet.</td></tr>`;
+
+  $("failures").innerHTML = `<tr><th>Time</th>${multi ? "<th>Target</th>" : ""}<th>Journey</th><th>Request</th><th>Status</th><th class="num">ms</th><th>Error</th><th>Request id</th></tr>` +
+    s.recentFailures.map((r) => `<tr><td>${new Date(r.at).toLocaleTimeString()}</td>${multi ? `<td>${esc(r.target)}</td>` : ""}<td>${esc(r.journey || "")}</td><td><code>${esc(r.method)} ${esc(r.path)}</code></td><td class="s${clsOf(r.status)}"><b>${esc(r.status)}</b></td><td class="num">${r.ms}</td><td class="wrap">${esc(r.error || "")}</td><td>${r.requestId ? `<code>${esc(r.requestId)}</code>` : ""}</td></tr>`).join("") ||
+    `<tr><td class="muted">None. 🎉</td></tr>`;
+}
+
+function renderOutcomes() {
+  if (!status) return;
+  const ts = status.targets.filter((t) => filter === "all" || t.name === filter);
+  const rows = [];
+  for (const t of ts) for (const [k, n] of Object.entries(t.outcomes)) { const [j, o] = k.split(":"); rows.push([t.name, j, o, n, t.avgJourneyMs[j]]); }
+  rows.sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]) || b[3] - a[3]);
+  const cls = (o) => (o === "failed" ? "pill bad" : o === "order_cancelled" || o === "checkout_rejected" || o === "order_pending" ? "pill warn" : "pill ok");
+  $("outcomes").innerHTML = `<tr>${filter === "all" ? "<th>Target</th>" : ""}<th>Journey</th><th>Outcome</th><th class="num">Count</th><th class="num">Avg duration</th></tr>` +
+    rows.map(([t, j, o, n, ms]) => `<tr>${filter === "all" ? `<td>${esc(t)}</td>` : ""}<td>${esc(j)}</td><td><span class="${cls(o)}">${esc(o)}</span></td><td class="num">${fmt(n)}</td><td class="num">${ms ? (ms / 1000).toFixed(1) + " s" : ""}</td></tr>`).join("") ||
+    `<tr><td class="muted">No journeys finished yet.</td></tr>`;
+}
+
+// ---------- header + banner
+function renderHeader() {
+  const s = status.settings;
+  $("runState").textContent = s.running ? `running · ${s.profile} ×${status.multiplier}` : "stopped";
+  $("runState").className = "pill " + (s.running ? "ok" : "");
+  $("toggleRun").textContent = s.running ? "Stop traffic" : "Start traffic";
+  $("toggleRun").classList.toggle("danger", s.running);
+  const d = status.activeDrill;
+  $("drillBanner").classList.toggle("hidden", !d);
+  if (d) $("drillBanner").innerHTML = `⚠️ <b>Drill "${esc(d.name)}"</b> on ${d.targets.map(esc).join(", ") || "no targets"} until ${new Date(d.endsAt).toLocaleTimeString()}<span class="spacer"></span><button class="btn sm danger" onclick="stopDrill()">End drill now</button>`;
+  const opts = [["all", "All targets"], ...status.targets.map((t) => [t.name, t.name])];
+  const sel = $("targetFilter");
+  const html = opts.map(([v, l]) => `<option value="${esc(v)}" ${v === filter ? "selected" : ""}>${esc(l)}</option>`).join("");
+  if (sel.innerHTML !== html) sel.innerHTML = html;
+}
+$("targetFilter").onchange = (e) => { filter = e.target.value; refresh(); };
+$("toggleRun").onclick = async () => { try { status = await api("PUT", "/api/settings", { running: !status.settings.running }); renderAll(); } catch (e) { toast(e.message); } };
+$("resetStats").onclick = async () => { if (!confirm("Clear all request statistics and journey counters?")) return; await api("POST", "/api/stats/reset").catch((e) => toast(e.message)); refresh(); };
+window.stopDrill = async () => { try { status = await api("POST", "/api/drills/stop"); renderAll(); toast("drill ended"); } catch (e) { toast(e.message); } };
+
+// ---------- settings
+function fillSettings() {
+  const s = status.settings;
+  for (const k of ["baseRate", "maxConcurrent", "peakMultiplier", "rampSeconds", "diurnalPeriodSeconds", "freshLoginRate"]) $("s-" + k).value = s[k];
+  $("s-thinkMin").value = s.thinkTime.minMs; $("s-thinkMax").value = s.thinkTime.maxMs;
+  $("freshLoginLabel").textContent = Math.round(s.freshLoginRate * 100) + "%";
+  $("weights").innerHTML = status.journeys.map((j) => `<div class="weight"><label class="f" for="w-${j}" style="margin:0">${j}</label><input type="range" min="0" max="100" step="1" id="wr-${j}" value="${s.weights[j]}" aria-label="${j} weight"><input type="number" min="0" id="w-${j}" value="${s.weights[j]}"><span class="muted small" id="wp-${j}"></span></div>`).join("");
+  for (const j of status.journeys) {
+    $("wr-" + j).oninput = () => { $("w-" + j).value = $("wr-" + j).value; shares(); settingsDirty = true; };
+    $("w-" + j).oninput = () => { $("wr-" + j).value = $("w-" + j).value; shares(); settingsDirty = true; };
+  }
+  shares();
+  settingsDirty = false;
+}
+function shares() {
+  const vals = status.journeys.map((j) => Number($("w-" + j).value) || 0);
+  const total = vals.reduce((a, b) => a + b, 0) || 1;
+  status.journeys.forEach((j, i) => ($("wp-" + j).textContent = Math.round((vals[i] / total) * 100) + "%"));
+}
+document.querySelectorAll("#tab-settings input, #tab-settings select").forEach((el) => el.addEventListener("input", () => (settingsDirty = true)));
+$("s-freshLoginRate").addEventListener("input", (e) => ($("freshLoginLabel").textContent = Math.round(e.target.value * 100) + "%"));
+$("revertSettings").onclick = () => { settingsDirty = false; fillSettings(); };
+$("saveSettings").onclick = async () => {
+  const num = (id) => Number($(id).value);
+  const body = {
+    baseRate: num("s-baseRate"), maxConcurrent: num("s-maxConcurrent"), peakMultiplier: num("s-peakMultiplier"),
+    rampSeconds: num("s-rampSeconds"), diurnalPeriodSeconds: num("s-diurnalPeriodSeconds"), freshLoginRate: num("s-freshLoginRate"),
+    thinkTime: { minMs: num("s-thinkMin"), maxMs: num("s-thinkMax") },
+    weights: Object.fromEntries(status.journeys.map((j) => [j, num("w-" + j)])),
+  };
+  try { status = await api("PUT", "/api/settings", body); settingsDirty = false; renderAll(); fillSettings(); toast("settings applied"); } catch (e) { toast(e.message); }
+};
+
+// ---------- profiles
+function spark(values, progress) {
+  const W = 220, H = 46, max = Math.max(1, ...values);
+  const pts = values.map((v, i) => `${(i / (values.length - 1)) * W},${H - 2 - (H - 6) * (v / max)}`).join(" ");
+  const marker = progress == null ? "" : `<line x1="${progress * W}" x2="${progress * W}" y1="0" y2="${H}" stroke="${css("--c4xx")}" stroke-dasharray="3 2"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,${H} ${pts} ${W},${H}" fill="${css("--accent-soft")}" stroke="none"/><polyline points="${pts}" fill="none" stroke="${css("--accent")}" stroke-width="1.8"/>${marker}</svg>`;
+}
+let profileSig = "";
+function renderProfiles() {
+  const s = status.settings;
+  const active = status.profiles.find((p) => p.name === s.profile);
+  const prog = active ? (status.profileElapsedSeconds % active.preview.horizonSeconds) / active.preview.horizonSeconds : null;
+  const sig = s.profile + "|" + Math.round((prog || 0) * 40) + "|" + s.peakMultiplier + "|" + s.rampSeconds + "|" + s.diurnalPeriodSeconds;
+  if (sig !== profileSig) {
+    profileSig = sig;
+    $("profileCards").innerHTML = status.profiles.map((p) => {
+      const on = p.name === s.profile;
+      const extras = [p.weights ? "own persona mix" : "", p.hotProducts.length ? `hot: ${p.hotProducts.join(", ")}` : "", p.freshLoginRate != null ? `fresh login ${Math.round(p.freshLoginRate * 100)}%` : ""].filter(Boolean);
+      const peak = Math.max(...p.preview.values);
+      return `<div class="pcard ${on ? "active" : ""}">
+        <div class="row"><span class="t">${esc(p.title)}</span><span class="spacer"></span>${on ? '<span class="pill ok">active</span>' : `<button class="btn sm" onclick="activateProfile('${p.name}')">Activate</button>`}</div>
+        ${spark(p.preview.values, on ? prog : null)}
+        <div class="muted small">peak ×${peak} · ${Math.round(p.preview.horizonSeconds / 60)} min shown</div>
+        <div class="d">${esc(p.description)}</div>
+        ${extras.length ? `<div class="small">${extras.map((x) => `<span class="pill">${esc(x)}</span>`).join(" ")}</div>` : ""}
+      </div>`;
+    }).join("");
+  }
+  const w = active?.weights;
+  $("weightsNote").classList.toggle("hidden", !w && active?.freshLoginRate == null);
+  if (w || active?.freshLoginRate != null) {
+    const ew = status.effectiveWeights, total = Object.values(ew).reduce((a, b) => a + b, 0) || 1;
+    $("weightsNote").innerHTML = `<b>${esc(active.title)}</b> is active and uses ${w ? "its own persona mix: " + Object.entries(ew).map(([k, v]) => `${esc(k)} ${Math.round((v / total) * 100)}%`).join(", ") : "your persona weights"}${active.freshLoginRate != null ? ` and a fresh-login rate of ${Math.round(active.freshLoginRate * 100)}%` : ""}. The values below apply to profiles without their own mix.`;
+  }
+}
+window.activateProfile = async (name) => {
+  try { status = await api("PUT", "/api/settings", { profile: name }); renderAll(); toast(`profile ${name} active`); } catch (e) { toast(e.message); }
+};
+
+// ---------- targets
+function renderTargets() {
+  $("targetsTable").innerHTML = `<tr><th>On</th><th>Name</th><th>Base URL</th><th>Connect to</th><th class="num">×rate</th><th class="num">Journeys/s</th><th class="num">Active</th><th class="num">Started</th><th class="num">Skipped</th><th>Provider</th><th></th></tr>` +
+    status.targets.map((t) => `<tr>
+      <td><input type="checkbox" ${t.enabled ? "checked" : ""} onchange="setEnabled('${esc(t.name)}', this.checked)" aria-label="enable ${esc(t.name)}"></td>
+      <td><b>${esc(t.name)}</b></td><td><code>${esc(t.baseUrl)}</code></td><td>${t.resolveTo ? `<code>${esc(t.resolveTo)}</code>` : '<span class="muted">DNS</span>'}</td>
+      <td class="num">${t.rateMultiplier}</td><td class="num">${t.effectiveRate}</td><td class="num">${t.activeJourneys}</td><td class="num">${fmt(t.journeysStarted)}</td><td class="num ${t.journeysSkipped ? "s4xx" : ""}">${fmt(t.journeysSkipped)}</td>
+      <td>${t.providerAdminUrl ? '<span class="pill ok">configured</span>' : '<span class="pill">none</span>'}</td>
+      <td class="row" style="flex-wrap:nowrap"><button class="btn sm ghost" onclick="testTarget('${esc(t.name)}')">Test</button><button class="btn sm ghost" onclick="editTarget('${esc(t.name)}')">Edit</button><button class="btn sm ghost" onclick="deleteTarget('${esc(t.name)}')">Delete</button></td></tr>`).join("");
+}
+window.setEnabled = async (name, enabled) => { try { await api("PUT", `/api/targets/${name}`, { enabled }); refresh(); } catch (e) { toast(e.message); } };
+window.deleteTarget = async (name) => { if (!confirm(`Remove target ${name}?`)) return; try { await api("DELETE", `/api/targets/${name}`); refresh(); } catch (e) { toast(e.message); } };
+window.testTarget = async (name) => {
+  const box = $("testResult"); box.classList.remove("hidden"); box.innerHTML = `<h2>Testing ${esc(name)}…</h2>`;
+  try {
+    const r = await api("POST", `/api/targets/${name}/test`);
+    box.innerHTML = `<h2>Test: ${esc(name)}</h2>` + r.results.map((x) => `<div class="row"><span class="pill ${x.ok ? "ok" : "bad"}">${x.ok ? "OK" : "FAIL"}</span><b>${esc(x.check)}</b><span class="muted">${esc(x.detail)}</span></div>`).join("");
+  } catch (e) { box.innerHTML = `<h2>Test failed</h2><p>${esc(e.message)}</p>`; }
+};
+const F = ["name", "baseUrl", "resolveTo", "rateMultiplier", "seedUserPrefix", "seedUserCount", "seedUserPassword", "providerAdminUrl", "providerAdminToken"];
+function openTarget(t) {
+  editing = t ? t.name : null;
+  $("targetDialogTitle").textContent = t ? `Edit ${t.name}` : "Add target";
+  for (const k of F) $("t-" + k).value = t ? (t[k] ?? "") : { rateMultiplier: 1, seedUserPrefix: "shopper", seedUserCount: 100, baseUrl: "http://shop.local/api" }[k] ?? "";
+  $("t-enabled").checked = t ? t.enabled : true;
+  $("t-seedUserPassword").required = !t;
+  $("pwHint").textContent = t?.seedUserPasswordSet ? "leave empty to keep the current password" : "SEED_USER_PASSWORD of that deployment";
+  $("tokHint").textContent = t?.providerAdminTokenSet ? "leave empty to keep the current token" : "needed for chaos drills";
+  $("targetDialog").showModal();
+}
+window.editTarget = (name) => openTarget(status.targets.find((t) => t.name === name));
+$("addTarget").onclick = () => openTarget(null);
+$("targetForm").addEventListener("submit", async (e) => {
+  if (e.submitter?.value !== "save") return;
+  e.preventDefault();
+  const body = { enabled: $("t-enabled").checked };
+  for (const k of F) body[k] = $("t-" + k).value.trim();
+  body.rateMultiplier = Number(body.rateMultiplier); body.seedUserCount = Number(body.seedUserCount);
+  try {
+    await api(editing ? "PUT" : "POST", editing ? `/api/targets/${editing}` : "/api/targets", body);
+    $("targetDialog").close(); toast("target saved"); refresh();
+  } catch (err) { toast(err.message); }
+});
+
+// ---------- drills
+function renderDrills() {
+  const box = $("drillTargets");
+  const prev = new Set([...box.querySelectorAll("input:checked")].map((i) => i.value));
+  const firstRender = !box.children.length;
+  box.innerHTML = status.targets.map((t) => `<label class="row" style="gap:4px"><input type="checkbox" value="${esc(t.name)}" ${firstRender ? (t.enabled ? "checked" : "") : prev.has(t.name) ? "checked" : ""}>${esc(t.name)}</label>`).join("");
+  const d = status.activeDrill;
+  $("drillsTable").innerHTML = `<tr><th>Drill</th><th>What happens</th><th class="num">Default</th><th>Needs provider</th><th></th></tr>` +
+    status.drills.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td class="wrap">${esc(x.description)}</td><td class="num">${Math.round(x.durationSeconds / 60)} min</td><td>${x.needsProvider ? "yes" : "no"}</td>
+      <td>${d?.name === x.name ? '<button class="btn sm danger" onclick="stopDrill()">Stop</button>' : `<button class="btn sm" onclick="startDrill('${x.name}')">Start</button>`}</td></tr>`).join("");
+}
+window.startDrill = async (name) => {
+  const targets = [...$("drillTargets").querySelectorAll("input:checked")].map((i) => i.value);
+  const dur = Number($("drillDuration").value);
+  try { status = await api("POST", `/api/drills/${name}`, { targets, ...(dur ? { durationSeconds: dur } : {}) }); renderAll(); toast(`drill ${name} started`); } catch (e) { toast(e.message); }
+};
+
+// ---------- loop
+function renderAll() {
+  if (!status) return;
+  renderHeader(); renderOutcomes();
+  if (tab === "settings") renderProfiles();
+  if (tab === "targets") renderTargets();
+  if (tab === "drills") renderDrills();
+}
+async function refresh() {
+  if (!token) return askToken();
+  try {
+    const [s, st] = await Promise.all([api("GET", "/api/status"), api("GET", `/api/stats?target=${encodeURIComponent(filter)}`)]);
+    const first = !status;
+    status = s;
+    renderAll();
+    renderStats(st);
+    if (first) showTab(tab);
+  } catch (e) { if (e.message !== "invalid control token") toast(e.message); }
+}
+for (const b of $("tabs").children) b.addEventListener("click", renderAll);
+refresh();
+setInterval(() => { if (!document.hidden) refresh(); }, 2000);
+</script>
+</body>
+</html>

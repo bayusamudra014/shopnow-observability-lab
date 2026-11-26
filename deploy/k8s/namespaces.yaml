@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop          # our microservices + frontend
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: infra         # postgres, redis, kafka (Strimzi), mailpit
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external      # Services that point OUTSIDE the cluster (Docker Compose containers)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform      # SigNoz + k8s-infra OpenTelemetry agents

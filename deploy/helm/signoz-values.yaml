@@ -1,0 +1,9 @@
+# SigNoz on minikube: single node, small disks. Installed as release "signoz" in
+# namespace "platform", which gives the Services signoz (UI :8080) and
+# signoz-otel-collector (OTLP :4317 gRPC / :4318 HTTP).
+global:
+  storageClass: standard
+
+clickhouse:
+  persistence:
+    size: 10Gi

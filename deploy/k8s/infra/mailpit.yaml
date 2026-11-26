@@ -1,0 +1,63 @@
+# Mailpit: fake SMTP server with a web inbox. The notification service sends every
+# email here. Inbox: http://mail.local
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailpit
+  namespace: infra
+spec:
+  selector: { app: mailpit }
+  ports:
+    - name: smtp
+      port: 1025
+    - name: http
+      port: 8025
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailpit
+  namespace: infra
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: mailpit }
+  template:
+    metadata:
+      labels: { app: mailpit }
+    spec:
+      containers:
+        - name: mailpit
+          image: axllent/mailpit:v1.27
+          env:
+            - name: MP_MAX_MESSAGES
+              value: "5000"
+            - name: MP_SMTP_AUTH_ACCEPT_ANY
+              value: "true"
+            - name: MP_SMTP_AUTH_ALLOW_INSECURE
+              value: "true"
+          ports:
+            - containerPort: 1025
+            - containerPort: 8025
+          readinessProbe:
+            httpGet: { path: /livez, port: 8025 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { memory: 256Mi }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mailpit
+  namespace: infra
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: mail.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: mailpit, port: { number: 8025 } }

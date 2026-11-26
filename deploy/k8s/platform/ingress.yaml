@@ -1,0 +1,35 @@
+# SigNoz UI and the OTLP/HTTP endpoint for telemetry coming from outside the cluster
+# (the traffic generator). Service names come from the SigNoz Helm release "signoz".
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: signoz
+  namespace: platform
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: signoz.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: signoz, port: { number: 8080 } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: otlp
+  namespace: platform
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: otlp.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: signoz-otel-collector, port: { number: 4318 } }

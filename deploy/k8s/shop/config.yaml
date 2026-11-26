@@ -1,0 +1,37 @@
+# Settings shared by every shop service. Secrets live in Secret shop-secrets
+# (created by scripts/deploy.ps1 from .secrets/secrets.env).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shop-common
+  namespace: shop
+data:
+  LOG_LEVEL: info
+  # --- OpenTelemetry: send traces, metrics AND logs over OTLP/HTTP to the SigNoz collector
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://signoz-otel-collector.platform.svc.cluster.local:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_TRACES_EXPORTER: otlp
+  OTEL_METRICS_EXPORTER: otlp
+  OTEL_LOGS_EXPORTER: otlp
+  OTEL_METRIC_EXPORT_INTERVAL: "15000"
+  OTEL_TRACES_SAMPLER: parentbased_always_on
+  # --- infrastructure
+  KAFKA_BROKERS: kafka-kafka-bootstrap.infra.svc.cluster.local:9092
+  REDIS_URL: redis://redis.infra.svc.cluster.local:6379
+  SMTP_HOST: mailpit.infra.svc.cluster.local
+  SMTP_PORT: "1025"
+  # --- auth
+  JWT_ISSUER: http://shop.local/api/auth
+  JWT_AUDIENCE: shop-api
+  AUTH_JWKS_URL: http://auth/.well-known/jwks.json
+  # --- service discovery (Kubernetes DNS, Service port 80)
+  AUTH_URL: http://auth
+  CATALOG_URL: http://catalog
+  CART_URL: http://cart
+  ORDER_URL: http://order
+  INVENTORY_URL: http://inventory
+  PAYMENT_URL: http://payment
+  PROVIDER_URL: http://payment-provider.external.svc.cluster.local:8080
+  # Where the provider sends this shop's webhooks (sent with every charge).
+  PROVIDER_WEBHOOK_CALLBACK_URL: http://hooks.local/webhooks/payment-provider
+  SHOP_PUBLIC_URL: http://shop.local

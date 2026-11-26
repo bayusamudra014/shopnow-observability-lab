@@ -1,0 +1,16 @@
+{
+  "name": "@shop/payment",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node --require @shop/telemetry/register dist/main.js"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.10.0",
+    "@shop/contracts": "*",
+    "@shop/telemetry": "*",
+    "zod": "^3.25.76"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@shop/notification",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node --require @shop/telemetry/register dist/main.js"
+  },
+  "dependencies": {
+    "@shop/contracts": "*",
+    "@shop/telemetry": "*",
+    "nodemailer": "^7.0.13",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^8.0.2"
+  }
+}

@@ -1,0 +1,59 @@
+# Public entry points of one student VM. minikube publishes the VM's ports 80/443 to the
+# ingress controller, so these hosts must resolve (DNS) to the VM's address.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shop-public
+  namespace: shop
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: __SHOP_HOST__
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service: { name: api-gateway, port: { number: 80 } }
+          # Webhooks from the shared payment provider. Only /webhooks of the payment
+          # service is published; its other endpoints stay cluster-internal.
+          - path: /webhooks
+            pathType: Prefix
+            backend:
+              service: { name: payment, port: { number: 80 } }
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: frontend, port: { number: 80 } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mailpit-public
+  namespace: infra
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: __MAIL_HOST__
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: mailpit, port: { number: 8025 } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: signoz-public
+  namespace: platform
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: __SIGNOZ_HOST__
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: signoz, port: { number: 8080 } }

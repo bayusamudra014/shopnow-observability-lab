@@ -1,0 +1,16 @@
+{
+  "name": "@shop/payment-provider",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mock EXTERNAL payment provider (think Stripe/Midtrans) with chaos knobs",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@shop/telemetry": "*",
+    "fastify": "^5.12.8",
+    "zod": "^3.25.76"
+  }
+}

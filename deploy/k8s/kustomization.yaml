@@ -1,0 +1,15 @@
+# Everything we own in the cluster. Operators/charts (Strimzi, SigNoz, k8s-infra) are
+# installed first by scripts/deploy.ps1 because these manifests use their CRDs/Services.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespaces.yaml
+  - infra/postgres.yaml
+  - infra/redis.yaml
+  - infra/mailpit.yaml
+  - infra/kafka.yaml
+  - external/endpoints.yaml
+  - shop/config.yaml
+  - shop/apps.yaml
+  - shop/ingress.yaml
+  - platform/ingress.yaml

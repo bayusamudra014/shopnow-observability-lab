@@ -1,0 +1,31 @@
+# A Service for something that runs OUTSIDE the cluster: the payment provider, a Docker
+# Compose container on the Docker "minikube" network. A Service without a selector plus
+# a hand-written EndpointSlice gives pods a normal DNS name for an external IP:
+#   payment-provider.external:8080  -> 192.168.49.100:8080
+# (scripts/deploy.ps1 patches the IP if your minikube network uses another subnet.)
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-provider
+  namespace: external
+spec:
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: payment-provider-1
+  namespace: external
+  labels:
+    kubernetes.io/service-name: payment-provider
+    endpointslice.kubernetes.io/managed-by: shop-deploy-script
+addressType: IPv4
+ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+endpoints:
+  - addresses: ["192.168.49.100"]

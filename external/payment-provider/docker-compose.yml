@@ -1,0 +1,86 @@
+# Mock EXTERNAL payment provider. Runs OUTSIDE minikube, as its own Compose project.
+#
+# It joins Docker's "minikube" network (created by `minikube start --driver=docker`) with
+# a fixed IP, so:
+#   - pods reach it through the Service payment-provider.external (EndpointSlice -> 192.168.49.100)
+#   - it sends webhooks to http://hooks.local -> minikube ingress (192.168.49.2)
+# Its database is on a private network that the cluster cannot see.
+#
+#   scripts/deploy.ps1 writes .env for you; otherwise copy .env.example to .env.
+#   docker compose up -d --build
+#   chaos console: http://localhost:8090/admin
+name: payment-provider
+
+services:
+  provider-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: provider
+      POSTGRES_USER: provider
+      POSTGRES_PASSWORD: ${PROVIDER_DB_PASSWORD:?set PROVIDER_DB_PASSWORD in .env}
+    volumes:
+      - provider-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U provider -d provider"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - internal
+    restart: unless-stopped
+
+  payment-provider:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        WORKSPACE: external/payment-provider
+        INSTRUMENT: "false"   # a third party: no OpenTelemetry towards our SigNoz
+    image: shop/payment-provider:dev
+    depends_on:
+      provider-db:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      OTEL_SERVICE_NAME: payment-provider   # only used as the "service" field in its own logs
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://provider:${PROVIDER_DB_PASSWORD}@provider-db:5432/provider
+      PROVIDER_API_KEY: ${PROVIDER_API_KEY:?set PROVIDER_API_KEY in .env}
+      PROVIDER_WEBHOOK_SECRET: ${PROVIDER_WEBHOOK_SECRET:?set PROVIDER_WEBHOOK_SECRET in .env}
+      # Optional. If empty and no token exists yet, a bootstrap token is printed in the logs.
+      # More tokens can be generated and revoked in the admin console.
+      PROVIDER_ADMIN_TOKEN: ${PROVIDER_ADMIN_TOKEN:-}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://hooks.local/webhooks/payment-provider}
+      # Default chaos (changeable at runtime in the console)
+      CHAOS_LATENCY_MS: ${CHAOS_LATENCY_MS:-80}
+      CHAOS_LATENCY_JITTER_MS: ${CHAOS_LATENCY_JITTER_MS:-120}
+      CHAOS_ERROR_RATE: ${CHAOS_ERROR_RATE:-0}
+      CHAOS_TIMEOUT_RATE: ${CHAOS_TIMEOUT_RATE:-0}
+      CHAOS_DECLINE_RATE: ${CHAOS_DECLINE_RATE:-0.03}
+      CHAOS_ASYNC_DECLINE_RATE: ${CHAOS_ASYNC_DECLINE_RATE:-0.02}
+      CHAOS_WEBHOOK_DELAY_MS: ${CHAOS_WEBHOOK_DELAY_MS:-2000}
+      CHAOS_DUPLICATE_WEBHOOK_RATE: ${CHAOS_DUPLICATE_WEBHOOK_RATE:-0.02}
+      CHAOS_BAD_SIGNATURE_RATE: ${CHAOS_BAD_SIGNATURE_RATE:-0}
+      CHAOS_DROP_WEBHOOK_RATE: ${CHAOS_DROP_WEBHOOK_RATE:-0}
+    extra_hosts:
+      - "hooks.local:${MINIKUBE_IP:-192.168.49.2}"
+    ports:
+      - "127.0.0.1:8090:8080"   # chaos console for the instructor
+    networks:
+      internal: {}
+      minikube:
+        ipv4_address: ${PROVIDER_IP:-192.168.49.100}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  internal: {}
+  minikube:
+    external: true
+
+volumes:
+  provider-db: {}

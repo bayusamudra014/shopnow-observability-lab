@@ -1,0 +1,19 @@
+{
+  "name": "ecommerce-observability-lab",
+  "private": true,
+  "description": "Microservice e-commerce app for teaching observability with OpenTelemetry and SigNoz",
+  "workspaces": [
+    "packages/contracts",
+    "packages/telemetry",
+    "services/*",
+    "external/payment-provider",
+    "tools/traffic-generator"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.4",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,319 @@
+# Shop microservices. Every Deployment follows the same pattern:
+#  - image built straight into minikube's Docker (imagePullPolicy: Never)
+#  - OTel resource attributes include pod/node/deployment so SigNoz can group by them
+#  - startup probe gives time for migrations and Kafka; readiness checks dependencies
+#
+# ----------------------------------------------------------------------------- api-gateway
+apiVersion: v1
+kind: Service
+metadata: { name: api-gateway, namespace: shop, labels: { app: api-gateway } }
+spec:
+  selector: { app: api-gateway }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: api-gateway, namespace: shop, labels: { app: api-gateway } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: api-gateway } }
+  template:
+    metadata: { labels: { app: api-gateway } }
+    spec:
+      containers:
+        - name: api-gateway
+          image: shop/api-gateway:dev
+          imagePullPolicy: Never
+          envFrom: [{ configMapRef: { name: shop-common } }]
+          env:
+            - { name: POD_NAME, valueFrom: { fieldRef: { fieldPath: metadata.name } } }
+            - { name: NODE_NAME, valueFrom: { fieldRef: { fieldPath: spec.nodeName } } }
+            - { name: OTEL_SERVICE_NAME, value: api-gateway }
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: "service.namespace=shop,deployment.environment=minikube,k8s.namespace.name=shop,k8s.deployment.name=api-gateway,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)" }
+            - { name: RATE_LIMIT_PER_MINUTE, value: "600" }
+          ports: [{ name: http, containerPort: 8080 }]
+          startupProbe: { httpGet: { path: /health, port: http }, periodSeconds: 3, failureThreshold: 60 }
+          readinessProbe: { httpGet: { path: /ready, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 20 }
+          resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 384Mi } }
+---
+# ------------------------------------------------------------------------------------ auth
+apiVersion: v1
+kind: Service
+metadata: { name: auth, namespace: shop, labels: { app: auth } }
+spec:
+  selector: { app: auth }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: auth, namespace: shop, labels: { app: auth } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: auth } }
+  template:
+    metadata: { labels: { app: auth } }
+    spec:
+      containers:
+        - name: auth
+          image: shop/auth:dev
+          imagePullPolicy: Never
+          envFrom: [{ configMapRef: { name: shop-common } }]
+          env:
+            - { name: POD_NAME, valueFrom: { fieldRef: { fieldPath: metadata.name } } }
+            - { name: NODE_NAME, valueFrom: { fieldRef: { fieldPath: spec.nodeName } } }
+            - { name: OTEL_SERVICE_NAME, value: auth }
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: "service.namespace=shop,deployment.environment=minikube,k8s.namespace.name=shop,k8s.deployment.name=auth,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)" }
+            - { name: POSTGRES_PASSWORD, valueFrom: { secretKeyRef: { name: shop-secrets, key: POSTGRES_PASSWORD } } }
+            - { name: DATABASE_URL, value: "postgres://shop:$(POSTGRES_PASSWORD)@postgres.infra.svc.cluster.local:5432/auth_db" }
+            - { name: SEED_USER_PASSWORD, valueFrom: { secretKeyRef: { name: shop-secrets, key: SEED_USER_PASSWORD } } }
+            - { name: INSTRUCTOR_PASSWORD, valueFrom: { secretKeyRef: { name: shop-secrets, key: INSTRUCTOR_PASSWORD } } }
+            - { name: SEED_USER_COUNT, value: "100" }
+            - { name: BCRYPT_COST, value: "10" }
+          ports: [{ name: http, containerPort: 8080 }]
+          startupProbe: { httpGet: { path: /health, port: http }, periodSeconds: 3, failureThreshold: 60 }
+          readinessProbe: { httpGet: { path: /ready, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 20 }
+          resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { memory: 384Mi } }
+---
+# --------------------------------------------------------------------------------- catalog
+apiVersion: v1
+kind: Service
+metadata: { name: catalog, namespace: shop, labels: { app: catalog } }
+spec:
+  selector: { app: catalog }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: catalog, namespace: shop, labels: { app: catalog } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: catalog } }
+  template:
+    metadata: { labels: { app: catalog } }
+    spec:
+      containers:
+        - name: catalog
+          image: shop/catalog:dev
+          imagePullPolicy: Never
+          envFrom: [{ configMapRef: { name: shop-common } }]
+          env:
+            - { name: POD_NAME, valueFrom: { fieldRef: { fieldPath: metadata.name } } }
+            - { name: NODE_NAME, valueFrom: { fieldRef: { fieldPath: spec.nodeName } } }
+            - { name: OTEL_SERVICE_NAME, value: catalog }
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: "service.namespace=shop,deployment.environment=minikube,k8s.namespace.name=shop,k8s.deployment.name=catalog,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)" }
+            - { name: POSTGRES_PASSWORD, valueFrom: { secretKeyRef: { name: shop-secrets, key: POSTGRES_PASSWORD } } }
+            - { name: DATABASE_URL, value: "postgres://shop:$(POSTGRES_PASSWORD)@postgres.infra.svc.cluster.local:5432/catalog_db" }
+            - { name: CATALOG_N_PLUS_ONE, value: "true" }   # lab: set to "false" and compare traces
+          ports: [{ name: http, containerPort: 8080 }]
+          startupProbe: { httpGet: { path: /health, port: http }, periodSeconds: 3, failureThreshold: 60 }
+          readinessProbe: { httpGet: { path: /ready, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 20 }
+          resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 384Mi } }
+---
+# ------------------------------------------------------------------------------------ cart
+apiVersion: v1
+kind: Service
+metadata: { name: cart, namespace: shop, labels: { app: cart } }
+spec:
+  selector: { app: cart }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: cart, namespace: shop, labels: { app: cart } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: cart } }
+  template:
+    metadata: { labels: { app: cart } }
+    spec:
+      containers:
+        - name: cart
+          image: shop/cart:dev
+          imagePullPolicy: Never
+          envFrom: [{ configMapRef: { name: shop-common } }]
+          env:
+            - { name: POD_NAME, valueFrom: { fieldRef: { fieldPath: metadata.name } } }
+            - { name: NODE_NAME, valueFrom: { fieldRef: { fieldPath: spec.nodeName } } }
+            - { name: OTEL_SERVICE_NAME, value: cart }
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: "service.namespace=shop,deployment.environment=minikube,k8s.namespace.name=shop,k8s.deployment.name=cart,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)" }
+            - { name: POSTGRES_PASSWORD, valueFrom: { secretKeyRef: { name: shop-secrets, key: POSTGRES_PASSWORD } } }
+            - { name: DATABASE_URL, value: "postgres://shop:$(POSTGRES_PASSWORD)@postgres.infra.svc.cluster.local:5432/cart_db" }
+          ports: [{ name: http, containerPort: 8080 }]
+          startupProbe: { httpGet: { path: /health, port: http }, periodSeconds: 3, failureThreshold: 60 }
+          readinessProbe: { httpGet: { path: /ready, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 20 }
+          resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 384Mi } }
+---
+# ----------------------------------------------------------------------------------- order
+apiVersion: v1
+kind: Service
+metadata: { name: order, namespace: shop, labels: { app: order } }
+spec:
+  selector: { app: order }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: order, namespace: shop, labels: { app: order } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: order } }
+  template:
+    metadata: { labels: { app: order } }
+    spec:
+      containers:
+        - name: order
+          image: shop/order:dev
+          imagePullPolicy: Never
+          envFrom: [{ configMapRef: { name: shop-common } }]
+          env:
+            - { name: POD_NAME, valueFrom: { fieldRef: { fieldPath: metadata.name } } }
+            - { name: NODE_NAME, valueFrom: { fieldRef: { fieldPath: spec.nodeName } } }
+            - { name: OTEL_SERVICE_NAME, value: order }
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: "service.namespace=shop,deployment.environment=minikube,k8s.namespace.name=shop,k8s.deployment.name=order,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)" }
+            - { name: POSTGRES_PASSWORD, valueFrom: { secretKeyRef: { name: shop-secrets, key: POSTGRES_PASSWORD } } }
+            - { name: DATABASE_URL, value: "postgres://shop:$(POSTGRES_PASSWORD)@postgres.infra.svc.cluster.local:5432/order_db" }
+            - { name: ORDER_PAYMENT_TIMEOUT_SECONDS, value: "600" }
+          ports: [{ name: http, containerPort: 8080 }]
+          startupProbe: { httpGet: { path: /health, port: http }, periodSeconds: 3, failureThreshold: 60 }
+          readinessProbe: { httpGet: { path: /ready, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 20 }
+          resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 384Mi } }
+---
+# ------------------------------------------------------------------------------- inventory
+apiVersion: v1
+kind: Service
+metadata: { name: inventory, namespace: shop, labels: { app: inventory } }
+spec:
+  selector: { app: inventory }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: inventory, namespace: shop, labels: { app: inventory } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: inventory } }
+  template:
+    metadata: { labels: { app: inventory } }
+    spec:
+      containers:
+        - name: inventory
+          image: shop/inventory:dev
+          imagePullPolicy: Never
+          envFrom: [{ configMapRef: { name: shop-common } }]
+          env:
+            - { name: POD_NAME, valueFrom: { fieldRef: { fieldPath: metadata.name } } }
+            - { name: NODE_NAME, valueFrom: { fieldRef: { fieldPath: spec.nodeName } } }
+            - { name: OTEL_SERVICE_NAME, value: inventory }
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: "service.namespace=shop,deployment.environment=minikube,k8s.namespace.name=shop,k8s.deployment.name=inventory,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)" }
+            - { name: POSTGRES_PASSWORD, valueFrom: { secretKeyRef: { name: shop-secrets, key: POSTGRES_PASSWORD } } }
+            - { name: DATABASE_URL, value: "postgres://shop:$(POSTGRES_PASSWORD)@postgres.infra.svc.cluster.local:5432/inventory_db" }
+          ports: [{ name: http, containerPort: 8080 }]
+          startupProbe: { httpGet: { path: /health, port: http }, periodSeconds: 3, failureThreshold: 60 }
+          readinessProbe: { httpGet: { path: /ready, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 20 }
+          resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 384Mi } }
+---
+# --------------------------------------------------------------------------------- payment
+apiVersion: v1
+kind: Service
+metadata: { name: payment, namespace: shop, labels: { app: payment } }
+spec:
+  selector: { app: payment }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: payment, namespace: shop, labels: { app: payment } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: payment } }
+  template:
+    metadata: { labels: { app: payment } }
+    spec:
+      containers:
+        - name: payment
+          image: shop/payment:dev
+          imagePullPolicy: Never
+          envFrom: [{ configMapRef: { name: shop-common } }]
+          env:
+            - { name: POD_NAME, valueFrom: { fieldRef: { fieldPath: metadata.name } } }
+            - { name: NODE_NAME, valueFrom: { fieldRef: { fieldPath: spec.nodeName } } }
+            - { name: OTEL_SERVICE_NAME, value: payment }
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: "service.namespace=shop,deployment.environment=minikube,k8s.namespace.name=shop,k8s.deployment.name=payment,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)" }
+            - { name: POSTGRES_PASSWORD, valueFrom: { secretKeyRef: { name: shop-secrets, key: POSTGRES_PASSWORD } } }
+            - { name: DATABASE_URL, value: "postgres://shop:$(POSTGRES_PASSWORD)@postgres.infra.svc.cluster.local:5432/payment_db" }
+            - { name: PROVIDER_API_KEY, valueFrom: { secretKeyRef: { name: shop-secrets, key: PROVIDER_API_KEY } } }
+            - { name: PROVIDER_WEBHOOK_SECRET, valueFrom: { secretKeyRef: { name: shop-secrets, key: PROVIDER_WEBHOOK_SECRET } } }
+            - { name: PROVIDER_TIMEOUT_MS, value: "3000" }
+            - { name: PROVIDER_MAX_ATTEMPTS, value: "3" }
+            - { name: PROVIDER_BREAKER_THRESHOLD, value: "5" }
+          ports: [{ name: http, containerPort: 8080 }]
+          startupProbe: { httpGet: { path: /health, port: http }, periodSeconds: 3, failureThreshold: 60 }
+          readinessProbe: { httpGet: { path: /ready, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 20 }
+          resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 384Mi } }
+---
+# ---------------------------------------------------------------------------- notification
+apiVersion: v1
+kind: Service
+metadata: { name: notification, namespace: shop, labels: { app: notification } }
+spec:
+  selector: { app: notification }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: notification, namespace: shop, labels: { app: notification } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: notification } }
+  template:
+    metadata: { labels: { app: notification } }
+    spec:
+      containers:
+        - name: notification
+          image: shop/notification:dev
+          imagePullPolicy: Never
+          envFrom: [{ configMapRef: { name: shop-common } }]
+          env:
+            - { name: POD_NAME, valueFrom: { fieldRef: { fieldPath: metadata.name } } }
+            - { name: NODE_NAME, valueFrom: { fieldRef: { fieldPath: spec.nodeName } } }
+            - { name: OTEL_SERVICE_NAME, value: notification }
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: "service.namespace=shop,deployment.environment=minikube,k8s.namespace.name=shop,k8s.deployment.name=notification,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)" }
+            - { name: NOTIFICATION_DELAY_MS, value: "0" }
+            - { name: NOTIFICATION_FAILURE_RATE, value: "0" }
+          ports: [{ name: http, containerPort: 8080 }]
+          startupProbe: { httpGet: { path: /health, port: http }, periodSeconds: 3, failureThreshold: 60 }
+          readinessProbe: { httpGet: { path: /ready, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 20 }
+          resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 384Mi } }
+---
+# -------------------------------------------------------------------------------- frontend
+apiVersion: v1
+kind: Service
+metadata: { name: frontend, namespace: shop, labels: { app: frontend } }
+spec:
+  selector: { app: frontend }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: frontend, namespace: shop, labels: { app: frontend } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: frontend } }
+  template:
+    metadata: { labels: { app: frontend } }
+    spec:
+      containers:
+        - name: frontend
+          image: shop/frontend:dev
+          imagePullPolicy: Never
+          ports: [{ name: http, containerPort: 8080 }]
+          readinessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 10 }
+          resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { memory: 64Mi } }
