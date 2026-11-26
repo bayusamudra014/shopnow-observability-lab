@@ -2,7 +2,9 @@
 .SYNOPSIS
   Builds every ShopNow image, pushes them to the registry and renders the two deploy kits:
 
-    dist/shopnow-kit-<tag>.tar.gz          for each student VM (Ubuntu + minikube)
+    dist/shopnow-kit-<tag>.tar.gz          Linux: a student's Ubuntu desktop or a VM
+    dist/shopnow-kit-windows-<tag>.zip     a student's Windows computer
+    dist/shopnow-kit-macos-<arch>-<tag>.tar.gz   a student's Mac (arm64 = Apple Silicon, amd64 = Intel)
     dist/shopnow-instructor-<tag>.tar.gz   for the instructor host (MockPay + traffic generator)
 
 .DESCRIPTION
@@ -261,6 +263,28 @@ if (-not $NoTools) {
   $hmwDir = Join-Path $WinToolsCache "helm-$HelmVersion"
   if (-not (Test-Path (Join-Path $hmwDir "windows-amd64/helm.exe"))) { Expand-Archive -Force $hmwZip $hmwDir }
   Info "verified and cached in $WinToolsCache"
+
+  # macOS (Apple Silicon and Intel) for the macOS kits: used straight from the kit's tools/.
+  $MacToolsCache = @{}
+  foreach ($ma in "arm64", "amd64") {
+    Step "Offline tools for darwin/$ma"
+    $mc = Join-Path $Root ".cache/tools/darwin-$ma"
+    New-Item -ItemType Directory -Force $mc | Out-Null
+    $mkm = "https://storage.googleapis.com/minikube/releases/$MinikubeVersion/minikube-darwin-$ma"
+    Get-Verified $mkm "$mkm.sha256" (Join-Path $mc "minikube-$MinikubeVersion")
+    $kcm = "https://dl.k8s.io/release/$KubectlVersion/bin/darwin/$ma/kubectl"
+    Get-Verified $kcm "$kcm.sha256" (Join-Path $mc "kubectl-$KubectlVersion")
+    $hmm = "https://get.helm.sh/helm-$HelmVersion-darwin-$ma.tar.gz"
+    $hmmTgz = Join-Path $mc "helm-$HelmVersion.tar.gz"
+    Get-Verified $hmm "$hmm.sha256sum" $hmmTgz
+    $hmmDir = Join-Path $mc "helm-$HelmVersion"
+    if (-not (Test-Path (Join-Path $hmmDir "darwin-$ma/helm"))) {
+      New-Item -ItemType Directory -Force $hmmDir | Out-Null
+      Exec { tar -xzf $hmmTgz -C $hmmDir } "extract helm darwin-$ma"
+    }
+    $MacToolsCache[$ma] = $mc
+    Info "verified and cached in $mc"
+  }
 }
 
 # ------------------------------------------------------------------------------ charts
@@ -359,6 +383,30 @@ if ($WinToolsCache) {
   Set-Content -Encoding ascii (Join-Path $wt "VERSIONS") @("ARCH=amd64", "MINIKUBE=$MinikubeVersion", "KUBECTL=$KubectlVersion", "HELM=$HelmVersion")
 }
 
+# --------------------------------------------------------------------- macOS student kits
+# The Linux scripts (they run on macOS too), MODE=local preset (a student's own Mac), the
+# Mac tools for one processor type each: arm64 = Apple Silicon (M1 and later), amd64 = Intel.
+$macKitNames = @()
+foreach ($ma in "arm64", "amd64") {
+  $macName = "shopnow-kit-macos-$ma"
+  Step "Rendering the macOS student kit ($ma)"
+  $MacKit = Join-Path $Dist $macName
+  if (Test-Path $MacKit) { Remove-Item -Recurse -Force $MacKit }
+  New-Item -ItemType Directory -Force $MacKit | Out-Null
+  Get-ChildItem $Kit | Where-Object { $_.Name -notin "tools", "shopnow.env" } | ForEach-Object { Copy-Item -Recurse $_.FullName (Join-Path $MacKit $_.Name) }
+  Write-Lf (Join-Path $MacKit "shopnow.env") ([IO.File]::ReadAllText((Join-Path $Kit "shopnow.env")).Replace("`nMODE=`n", "`nMODE=local`n"))
+  if ($MacToolsCache) {
+    $mt = Join-Path $MacKit "tools/darwin-$ma"
+    New-Item -ItemType Directory -Force $mt | Out-Null
+    $mc = $MacToolsCache[$ma]
+    Copy-Item (Join-Path $mc "minikube-$MinikubeVersion") (Join-Path $mt "minikube")
+    Copy-Item (Join-Path $mc "kubectl-$KubectlVersion") (Join-Path $mt "kubectl")
+    Copy-Item (Join-Path $mc "helm-$HelmVersion/darwin-$ma/helm") (Join-Path $mt "helm")
+    Write-Lf (Join-Path $MacKit "tools/VERSIONS") ((@("OS=darwin", "ARCH=$ma", "MINIKUBE=$MinikubeVersion", "KUBECTL=$KubectlVersion", "HELM=$HelmVersion") -join "`n") + "`n")
+  }
+  $macKitNames += $macName
+}
+
 # ---------------------------------------------------------------------- instructor kit
 Step "Rendering the instructor kit"
 $instName = "shopnow-instructor"
@@ -383,17 +431,18 @@ for d in "$@"; do
   find "/tmp/$d" -type f -exec chmod 644 {} +
   find "/tmp/$d" -name '*.sh' -exec chmod 755 {} +
   find "/tmp/$d" -name '*.env' -exec chmod 600 {} +
-  if [ -d "/tmp/$d/tools" ]; then chmod 755 "/tmp/$d/tools/minikube" "/tmp/$d/tools/kubectl" "/tmp/$d/tools/helm"; fi
+  if [ -d "/tmp/$d/tools" ]; then find "/tmp/$d/tools" -type f ! -name VERSIONS -exec chmod 755 {} +; fi
   chown -R 0:0 "/tmp/$d"
   tar -czf "/dist/$d-$tag.tar.gz" -C /tmp "$d"
 done
 '@
 try {
-  Exec { docker run --rm -v "${Dist}:/dist" alpine:3.22 sh /dist/.pack.sh $Tag $kitName $instName } "pack kits"
+  $packNames = @($kitName, $instName) + $macKitNames
+  Exec { docker run --rm -v "${Dist}:/dist" alpine:3.22 sh /dist/.pack.sh $Tag @packNames } "pack kits"
 } finally {
   Remove-Item $packScript -ErrorAction SilentlyContinue
 }
-foreach ($name in $kitName, $instName) { Info (Join-Path $Dist "$name-$Tag.tar.gz") }
+foreach ($name in @($kitName, $instName) + $macKitNames) { Info (Join-Path $Dist "$name-$Tag.tar.gz") }
 $winZip = Join-Path $Dist "$winKitName-$Tag.zip"
 if (Test-Path $winZip) { Remove-Item -Force $winZip }
 Compress-Archive -Path $WinKit -DestinationPath $winZip -CompressionLevel Optimal
@@ -407,6 +456,8 @@ Write-Host @"
   Linux             dist\$kitName-$Tag.tar.gz: extract, set MODE=local (own computer) or
                     MODE=vm (server) in shopnow-kit/shopnow.env, then ./deploy.sh --install-deps
   Windows           dist\$winKitName-$Tag.zip: extract, double-click deploy.cmd (MODE=local)
+  macOS             dist\shopnow-kit-macos-arm64-$Tag.tar.gz (Apple Silicon) or -amd64 (Intel):
+                    extract, then ./deploy.sh in Terminal (MODE=local)
   Instructor host   copy dist\$instName-$Tag.tar.gz, extract, fill in shopnow-instructor/.env,
                     then ./deploy.sh
 

@@ -7,7 +7,7 @@ There are two ways to run it, chosen with `MODE` in `shopnow.env`:
 
 | | `MODE=local` — your own computer | `MODE=vm` — a server |
 |---|---|---|
-| Runs on | Ubuntu desktop or Windows | an Ubuntu VM |
+| Runs on | Ubuntu desktop, Windows or macOS | an Ubuntu VM |
 | Payment provider | a local MockPay container on this computer | the course MockPay |
 | Open | `http://shop.localhost` (no DNS or hosts file needed) | the hostnames you configure (DNS) |
 
@@ -20,6 +20,24 @@ minikube, kubectl and helm come in `tools\`; no installation, administrator righ
 hosts file or `minikube tunnel` are needed. If port 80 is taken, set `HTTP_PORT=8080` in
 `shopnow.env` first (then open `http://shop.localhost:8080`). `status.cmd` shows the pods,
 `destroy.cmd` removes everything.
+
+## macOS (MODE=local)
+
+1. Install and start **Docker Desktop for Mac**; in Settings > Resources give it 4+ CPUs and
+   12+ GB of memory.
+2. Take the kit for your Mac's chip: `shopnow-kit-macos-arm64` for Apple Silicon (M1 and
+   later), `shopnow-kit-macos-amd64` for Intel (Apple menu > About This Mac).
+3. In Terminal:
+
+```bash
+tar -xzf shopnow-kit-macos-arm64-<tag>.tar.gz && cd shopnow-kit-macos-arm64
+./deploy.sh
+```
+
+minikube, kubectl and helm come in `tools/` and are used from there: nothing is installed.
+Open the shop in Chrome or Firefox at `http://shop.localhost`. If port 80 is taken, set
+`HTTP_PORT=8080` in `shopnow.env` first. `./status.sh`, `./check.sh` and `./destroy.sh` work as
+on Linux.
 
 ## Ubuntu desktop or VM
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ShopNow observability lab: deploy the whole shop with minikube (Linux).
+# ShopNow observability lab: deploy the whole shop with minikube (Linux or macOS).
 # Nothing is built here; every image is pulled from the course registry.
 #
 #   1. Fill in shopnow.env: MODE=local (your own computer) or MODE=vm (a server), see there.
@@ -8,13 +8,20 @@
 #
 # Re-running is safe: the shop's manifests (shopnow.yaml) are applied again only when they
 # or shopnow.env changed, so changes you made in the cluster with kubectl are kept.
-# Needs: Ubuntu 22.04+/24.04 (desktop or server), 4+ CPUs, 12+ GB RAM, 40 GB disk, a normal
-# user in the "docker" group (not root). MODE=vm also needs DNS for its hosts.
+# Needs: Ubuntu 22.04+/24.04 (desktop or server) or macOS 13+ with Docker Desktop, 4+ CPUs and
+# 12+ GB of memory for Docker, 40 GB disk, a normal user (not root; on Linux in the "docker"
+# group). MODE=vm also needs DNS for its hosts.
 # Optional environment: MINIKUBE_CPUS, MINIKUBE_MEMORY (e.g. 12g), MINIKUBE_DISK (e.g. 40g),
 # MINIKUBE_PROFILE (default shopnow), ENV_FILE (default: shopnow.env next to this script).
 set -euo pipefail
 
 KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OS="$(uname -s)"
+# macOS: use the kit's own minikube, kubectl and helm (tools/darwin-<arch>), nothing installed.
+if [[ "$(uname -s)" == Darwin ]]; then
+  case "$(uname -m)" in arm64) _arch=arm64 ;; *) _arch=amd64 ;; esac
+  [[ -d "$KIT_DIR/tools/darwin-$_arch" ]] && PATH="$KIT_DIR/tools/darwin-$_arch:$PATH"
+fi
 INSTALL_DEPS=false
 for a in "$@"; do
   case "$a" in
@@ -28,9 +35,11 @@ done
 source "$KIT_DIR/kit.env"   # REGISTRY, TAG, STRIMZI_VERSION, *_CHART (set by the release)
 ENV_FILE="${ENV_FILE:-$KIT_DIR/shopnow.env}"
 [[ -f "$ENV_FILE" ]] || { echo "missing $ENV_FILE" >&2; exit 1; }
-# Tolerate files saved on Windows (byte-order mark, CRLF line endings).
-# shellcheck source=/dev/null
-source <(sed -e '1s/^\xEF\xBB\xBF//' -e 's/\r$//' "$ENV_FILE")
+# Tolerate files saved on Windows (byte-order mark, CRLF line endings). (eval, not
+# `source <(...)`: macOS's bash 3.2 silently sources nothing from a process substitution.)
+# BSD sed (macOS) knows no hex or CR escapes: build the BOM with printf, drop CRs with tr.
+bom="$(printf '\357\273\277')"
+eval "$(LC_ALL=C tr -d '\r' < "$ENV_FILE" | LC_ALL=C sed -e "1s/^$bom//")"
 
 MODE="$(echo "${MODE:-}" | tr '[:upper:]' '[:lower:]')"
 case "$MODE" in
@@ -75,7 +84,7 @@ fi
 # minikube, kubectl and helm ship in tools/ (pinned versions): install them without internet.
 install_bundled_tools() {
   local dir="$KIT_DIR/tools" arch want t
-  [[ -f "$dir/VERSIONS" ]] || return 0
+  [[ "$OS" == Linux && -f "$dir/VERSIONS" ]] || return 0
   arch="$(dpkg --print-architecture 2>/dev/null || uname -m)"
   case "$arch" in x86_64) arch=amd64 ;; aarch64) arch=arm64 ;; esac
   want="$(sed -n 's/^ARCH=//p' "$dir/VERSIONS")"
@@ -85,13 +94,17 @@ install_bundled_tools() {
   fi
   for t in minikube kubectl helm; do
     if ! command -v "$t" >/dev/null && [[ -f "$dir/$t" ]]; then
-      info "installing $t from the kit ($(sed -n "s/^${t^^}=//p" "$dir/VERSIONS"), offline)"
+      info "installing $t from the kit ($(sed -n "s/^$(echo "$t" | tr '[:lower:]' '[:upper:]')=//p" "$dir/VERSIONS"), offline)"
       sudo install -m 0755 "$dir/$t" "/usr/local/bin/$t"
     fi
   done
 }
 
 install_deps() {
+  if [[ "$OS" == Darwin ]]; then
+    command -v docker >/dev/null || { echo "Install Docker Desktop for Mac (https://docs.docker.com/desktop/setup/install/mac-install/), start it, then run this again." >&2; exit 1; }
+    return 0   # minikube, kubectl and helm come with the kit (tools/)
+  fi
   step "Installing docker, minikube, kubectl and helm"
   local arch; arch="$(dpkg --print-architecture)"   # amd64 | arm64
   if ! command -v docker >/dev/null; then
@@ -123,16 +136,29 @@ install_bundled_tools
 for tool in docker minikube kubectl helm curl; do
   command -v "$tool" >/dev/null || { echo "$tool is missing. Run: $0 --install-deps" >&2; exit 1; }
 done
-docker info >/dev/null 2>&1 || { echo "cannot talk to Docker. Is it running, and are you in the docker group? (log out/in after adding)" >&2; exit 1; }
+if ! docker info >/dev/null 2>&1; then
+  if [[ "$OS" == Darwin ]]; then echo "Docker is not running. Start Docker Desktop, wait until it says 'Engine running', then run this again." >&2
+  else echo "cannot talk to Docker. Is it running, and are you in the docker group? (log out/in after adding)" >&2; fi
+  exit 1
+fi
+if [[ "$OS" == Darwin ]]; then
+  # Files unpacked from a download are quarantined; macOS would refuse to run the kit's tools.
+  xattr -dr com.apple.quarantine "$KIT_DIR/tools" 2>/dev/null || true
+fi
 if [[ "$MODE" == vm ]]; then
   for h in "$SHOP_HOST" "$MAIL_HOST" "$SIGNOZ_HOST"; do
-    getent hosts "$h" >/dev/null || warn "$h does not resolve (yet). It works once DNS points it at this VM."
+    { getent hosts "$h" || host "$h"; } >/dev/null 2>&1 || warn "$h does not resolve (yet). It works once DNS points it at this VM."
   done
 fi
 
 # ------------------------------------------------------------------------------ cluster
-total_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
-CPUS="${MINIKUBE_CPUS:-$(( $(nproc) < 6 ? $(nproc) : 6 ))}"
+# What Docker can use (on macOS: Docker Desktop's VM, not the whole Mac).
+total_mb=$(( $(docker info --format '{{.MemTotal}}') / 1024 / 1024 ))
+ncpu="$(docker info --format '{{.NCPU}}')"
+CPUS="${MINIKUBE_CPUS:-$(( ncpu < 6 ? ncpu : 6 ))}"
+if (( total_mb < 10 * 1024 )); then
+  warn "Docker has only $(( total_mb / 1024 )) GB of memory; give it 12 GB or more (Docker Desktop: Settings > Resources)"
+fi
 MEMORY="${MINIKUBE_MEMORY:-$(( total_mb - 2048 < 12288 ? total_mb - 2048 : 12288 ))m}"
 DISK="${MINIKUBE_DISK:-40g}"
 step "Starting minikube profile '$PROFILE' ($CPUS CPUs, $MEMORY memory), port $HTTP_PORT -> ingress"
@@ -246,7 +272,8 @@ sed -e "s|__SHOP_HOST__|$SHOP_HOST|g" \
     -e "s|__PROVIDER_URL__|$PROVIDER_URL|g" \
     -e "s|__WEBHOOK_CALLBACK_URL__|$WEBHOOK_CALLBACK_URL|g" \
     "$KIT_DIR/shopnow.yaml" > "$RENDERED"
-hash="$(sha256sum "$RENDERED" | cut -c1-16)"
+sha() { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi; }
+hash="$(sha < "$RENDERED" | cut -c1-16)"
 state() { kube -n shop get configmap shopnow-kit-state -o "jsonpath={.data.$1}" 2>/dev/null || true; }
 prev_tag="$(state kitTag)"; prev_hash="$(state appliedHash)"; prev_update="$(state updateTag)"
 if ! kube -n shop get configmap shopnow-kit-state >/dev/null 2>&1 && kube -n shop get deployment order >/dev/null 2>&1 \
@@ -269,12 +296,15 @@ else
     # Same release: keep whatever image order/catalog run now (a rollout or rollback stays).
     for d in order catalog; do
       live="$(kube -n shop get deployment "$d" -o 'jsonpath={.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
-      [[ -n "$live" ]] && sed -i "s|image: $REGISTRY/shopnow-$d:.*|image: $live|" "$RENDERED"
+      # (no sed -i: GNU and BSD/macOS sed disagree on its syntax)
+      if [[ -n "$live" ]]; then
+        sed "s|image: $REGISTRY/shopnow-$d:.*|image: $live|" "$RENDERED" > "$RENDERED.new" && mv "$RENDERED.new" "$RENDERED"
+      fi
     done
   fi
-  cm_before="$(kube -n shop get configmap shop-common -o 'jsonpath={.data}' 2>/dev/null | sha256sum)"
+  cm_before="$(kube -n shop get configmap shop-common -o 'jsonpath={.data}' 2>/dev/null | sha)"
   kube apply -f "$RENDERED" >/dev/null
-  cm_after="$(kube -n shop get configmap shop-common -o 'jsonpath={.data}' 2>/dev/null | sha256sum)"
+  cm_after="$(kube -n shop get configmap shop-common -o 'jsonpath={.data}' 2>/dev/null | sha)"
   # Changed settings only reach running pods on restart.
   if [[ -n "$prev_tag" && "$cm_before" != "$cm_after" ]]; then
     info "settings changed: restarting the shop's services"
@@ -294,10 +324,11 @@ step "Waiting for the shop (first start pulls the images)"
 wait_deploy() {
   local d="$1" deadline=$((SECONDS + 600)) want ready restarts
   while (( SECONDS < deadline )); do
-    want="$(kube -n shop get deployment "$d" -o 'jsonpath={.spec.replicas}')"
-    ready="$(kube -n shop get deployment "$d" -o 'jsonpath={.status.updatedReplicas}/{.status.readyReplicas}/{.status.replicas}')"
-    if [[ "$ready" == "$want/$want/$want" ]]; then info "$d ready"; return 0; fi
-    restarts="$(kube -n shop get pods -l "app=$d" -o 'jsonpath={range .items[*]}{.status.containerStatuses[0].restartCount}{" "}{end}')"
+    # (|| true: a failed lookup, e.g. while the API server is busy, just means "not yet")
+    want="$(kube -n shop get deployment "$d" -o 'jsonpath={.spec.replicas}' 2>/dev/null || true)"
+    ready="$(kube -n shop get deployment "$d" -o 'jsonpath={.status.updatedReplicas}/{.status.readyReplicas}/{.status.replicas}' 2>/dev/null || true)"
+    if [[ -n "$want" && "$ready" == "$want/$want/$want" ]]; then info "$d ready"; return 0; fi
+    restarts="$(kube -n shop get pods -l "app=$d" -o 'jsonpath={range .items[*]}{.status.containerStatuses[0].restartCount}{" "}{end}' 2>/dev/null || true)"
     for r in $restarts; do
       if (( r >= 3 )); then warn "$d keeps restarting (see ./status.sh); continuing"; return 0; fi
     done

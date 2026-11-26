@@ -129,6 +129,7 @@ done
 Step "Done"
 Write-Host "    $(Join-Path $Dist "shopnow-kit-$Tag.tar.gz")   Linux: set MODE=local or MODE=vm in shopnow.env"
 Write-Host "    $(Join-Path $Dist "shopnow-kit-windows-$Tag.zip")   Windows: extract, double-click deploy.cmd"
+Write-Host "    $(Join-Path $Dist "shopnow-kit-macos-arm64-$Tag.tar.gz") / -amd64   macOS (Apple Silicon / Intel): ./deploy.sh"
 foreach ($vm in $vms) {
   Write-Host "    $(Join-Path $Dist "shopnow-kit-$($vm.Name)-$Tag.tar.gz")   for $($vm.Values.SHOP_HOST): ready to run"
 }

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Shows the state of ShopNow on this machine: minikube, pods, public hosts, local MockPay.
 KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# macOS: use the kit's own minikube, kubectl and helm (tools/darwin-<arch>), nothing installed.
+if [[ "$(uname -s)" == Darwin ]]; then
+  case "$(uname -m)" in arm64) _arch=arm64 ;; *) _arch=amd64 ;; esac
+  [[ -d "$KIT_DIR/tools/darwin-$_arch" ]] && PATH="$KIT_DIR/tools/darwin-$_arch:$PATH"
+fi
 PROFILE="${MINIKUBE_PROFILE:-shopnow}"
 h() { printf '\n\033[36m==> %s\033[0m\n' "$*"; }
 h "minikube ($PROFILE)"

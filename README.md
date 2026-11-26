@@ -76,6 +76,7 @@ docker login <registry host>
 |---|---|---|
 | `shopnow-kit-<tag>.tar.gz` | Linux: a student's Ubuntu desktop (`MODE=local`) or a VM (`MODE=vm`) | `shopnow.env`: `MODE`; for `vm` also `SHOP_HOST`, `MAIL_HOST`, `SIGNOZ_HOST`, `SHOP_PUBLIC_URL`, `PROVIDER_URL`, `WEBHOOK_CALLBACK_URL` |
 | `shopnow-kit-windows-<tag>.zip` | a student's Windows computer with Docker Desktop (`MODE=local`) | nothing: double-click `deploy.cmd` |
+| `shopnow-kit-macos-arm64-<tag>.tar.gz`, `-amd64` | a student's Mac with Docker Desktop (Apple Silicon / Intel, `MODE=local`) | nothing: `./deploy.sh` in Terminal |
 | `shopnow-instructor-<tag>.tar.gz` | the instructor host (MockPay + traffic generator) | `.env`: `WEBHOOK_ALLOWED_HOSTS`, `TARGET_BASE_URLS` (optional `WEBHOOK_URL`, ports) |
 
 To re-render the student kit on Windows without building or pushing (for a tag that is already
