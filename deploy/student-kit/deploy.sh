@@ -302,9 +302,9 @@ else
       fi
     done
   fi
-  cm_before="$(kube -n shop get configmap shop-common -o 'jsonpath={.data}' 2>/dev/null | sha)"
+  cm_before="$(kube -n shop get configmap shop-common -o 'jsonpath={.data}' 2>/dev/null | sha || true)"
   kube apply -f "$RENDERED" >/dev/null
-  cm_after="$(kube -n shop get configmap shop-common -o 'jsonpath={.data}' 2>/dev/null | sha)"
+  cm_after="$(kube -n shop get configmap shop-common -o 'jsonpath={.data}' 2>/dev/null | sha || true)"
   # Changed settings only reach running pods on restart.
   if [[ -n "$prev_tag" && "$cm_before" != "$cm_after" ]]; then
     info "settings changed: restarting the shop's services"
